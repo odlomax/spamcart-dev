@@ -1,0 +1,13 @@
+sim_cloud_file = be_sphere_00.dat
+sim_id = bb_test
+sim_n_it = 3
+sim_n_packet = 100000
+
+point_sources=.false.
+
+ext_rf_type = bb
+ext_rf_cmb = .false
+ext_rf_t = 120.
+ext_rf_d = 0.0625
+
+datacube_lambda_string= 10. 30. 70. 110. 160. 250. 350. 500.

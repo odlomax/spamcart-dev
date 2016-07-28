@@ -1,0 +1,6 @@
+Porter and Strong 2005 Milky Way interstellar radiation field
+arXiv: http://arxiv.org/abs/astro-ph/0507119
+ADS:http://adsabs.harvard.edu/cgi-bin/bib_query?arXiv:astro-ph/0507119
+
+Files extracted from GALPROP distribution: http://galprop.stanford.edu
+
