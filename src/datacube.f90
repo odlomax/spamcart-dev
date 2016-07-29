@@ -49,6 +49,7 @@ module m_datacube
       contains
       
       procedure,non_overridable :: initialise
+      procedure,non_overridable :: psf_convolve
       procedure,non_overridable :: destroy
    
    end type
@@ -57,7 +58,7 @@ module m_datacube
    
    subroutine initialise(self,sph_kernel,sph_tree,dust_prop,&
       &x_min,x_max,n_x,y_min,y_max,n_y,&
-      &angle,lambda_min,lambda_max,n_lambda,lambda_array,v_ob_in,background,point_sources)
+      &angle,lambda_array,v_ob_in,background,point_sources)
    
       ! argument declarations
       class(datacube),intent(inout) :: self                 ! datacube object
@@ -71,11 +72,8 @@ module m_datacube
       real(kind=rel_kind),intent(in) :: y_max               ! maximum y position (relative to CoM)
       integer(kind=int_kind),intent(in) :: n_y              ! number of y points
       real(kind=rel_kind),intent(in) :: angle(3)            ! (altitude,azimuth,rotation)
-      real(kind=rel_kind),intent(in),optional :: lambda_min ! minimum wavelength
-      real(kind=rel_kind),intent(in),optional :: lambda_max ! maximum wavelength
-      integer(kind=int_kind),intent(in),optional :: n_lambda! number of wavelengths
-      real(kind=rel_kind),intent(in),optional :: lambda_array(:)  ! custom array of wavelengths
-      real(kind=rel_kind),intent(in),optional :: v_ob_in(3)    ! velocity of observer
+      real(kind=rel_kind),intent(in) :: lambda_array(:)     ! custom array of wavelengths
+      real(kind=rel_kind),intent(in),optional :: v_ob_in(n_dim)   ! velocity of observer
       class(source),intent(in),optional :: background       ! background radiation field
       class(source),intent(in),optional :: point_sources(:) ! point sources
       
@@ -85,10 +83,10 @@ module m_datacube
       integer(kind=int_kind) :: num_threads                 ! number of OpenMP threads
       integer(kind=int_kind) :: thread_num                  ! thread number
       real(kind=rel_kind) :: i_bg                           ! background intensity
-      real(kind=rel_kind) :: img_x_unit(3)                  ! image x unit vector in 3D space (width)
-      real(kind=rel_kind) :: img_y_unit(3)                  ! image y unit vector in 3D space (height)
-      real(kind=rel_kind) :: img_z_unit(3)                  ! image z unit vector in 3D space (depth)
-      real(kind=rel_kind) :: pix_position(3)                ! pixel position in 3D space
+      real(kind=rel_kind) :: img_x_unit(n_dim)              ! image x unit vector in 3D space (width)
+      real(kind=rel_kind) :: img_y_unit(n_dim)              ! image y unit vector in 3D space (height)
+      real(kind=rel_kind) :: img_z_unit(n_dim)              ! image z unit vector in 3D space (depth)
+      real(kind=rel_kind) :: pix_position(n_dim)            ! pixel position in 3D space
       real(kind=rel_kind) :: v_ob(3)                        ! velocity of observer
       real(kind=rel_kind) :: x_img                          ! x position in image coordinates
       real(kind=rel_kind) :: y_img                          ! y position in image coordinates
@@ -97,21 +95,14 @@ module m_datacube
       ! allocate arrays
       allocate(self%x(n_x))
       allocate(self%y(n_y))
-      if (present(lambda_array)) then
-         allocate(self%lambda(size(lambda_array)))
-      else
-         allocate(self%lambda(n_lambda))
-      end if
+      allocate(self%lambda(size(lambda_array)))
       allocate(self%i_lambda(size(self%lambda),size(self%x),size(self%y)))
       
       ! set up coordinates
       self%x=lin_space(x_min,x_max,n_x)
       self%y=lin_space(y_min,y_max,n_y)
-      if (present(lambda_array)) then
-         self%lambda=lambda_array
-      else
-         self%lambda=log_lin_space(lambda_min,lambda_max,n_lambda)
-      end if
+      self%lambda=lambda_array
+
       if (present(v_ob_in)) then
          v_ob=v_ob_in
       else
@@ -232,6 +223,82 @@ module m_datacube
        
       return
    
+   end subroutine
+   
+   ! convolve datacube images with Gaussian PSF
+   subroutine psf_convolve(self,distance,fwhm_array)
+   
+      include "fftw3.f03"
+      
+      ! argument declarations
+      class(datacube),intent(inout) :: self                                ! datacube object
+      real(kind=rel_kind) :: distance                                      ! observer source distance
+      real(kind=rel_kind) :: fwhm_array(:)                                 ! array of beam fwhm (arcseconds)
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i,j,k                                      ! counter
+      integer(kind=int_kind) :: plan                                       ! fftw plan variable
+      real(kind=rel_kind) :: centre(2)                                     ! centre of grid
+      real(kind=rel_kind) :: r                                             ! distance from centre of grid
+      real(kind=rel_kind) :: sigma                                         ! standard deviation of absolute beam size
+      real(kind=rel_kind) :: sigma_conv                                    ! fwhm -> sigma conversion factor
+      complex(kind=cpx_kind) :: intensity_map(size(self%x),size(self%y))   ! intensity map
+      complex(kind=cpx_kind) :: psf_map(size(self%x),size(self%y))         ! point spread function
+      
+      ! check fwhm array has correct number of elements
+      if (size(fwhm_array)/=size(self%lambda)) then
+         write(*,"(A)") "Incorrect number of beam sizes. Cannot convolve."
+         return      
+      end if
+      
+      centre=0.5_rel_kind*(/self%x(1)+self%x(size(self%x)),self%y(1)+self%y(size(self%y))/)
+      sigma_conv=distance*arcsec_rad/fwhm_sigma
+      do i=1,size(self%lambda)
+         
+         ! set complex map
+         intensity_map=cmplx(self%i_lambda(i,:,:),0.,rel_kind)
+         sigma=fwhm_array(i)*sigma_conv
+         
+         ! set pdf grid
+         do concurrent (k=1:size(self%y))
+            do concurrent (j=1:size(self%x))
+            
+               ! calculate distance from centre
+               r=norm2((/self%x(j),self%y(k)/)-centre)
+               
+               ! set psf
+               psf_map(j,k)=cmplx(exp(-r**2/(2._rel_kind*sigma**2)),0.,rel_kind)
+            
+            end do
+         end do
+         ! normalise psf
+         psf_map=cmplx(real(psf_map,rel_kind)/(sum(real(psf_map,rel_kind))*size(psf_map)),0.,rel_kind)
+         
+         ! cshift psf
+         psf_map=cshift(psf_map,size(self%x)/2,1)
+         psf_map=cshift(psf_map,size(self%y)/2,2)
+         
+         
+         ! Fourier transform intensity map
+         call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),intensity_map,intensity_map,fftw_forward,fftw_estimate)
+         call dfftw_execute_dft(plan,intensity_map,intensity_map)
+         
+         ! Fourier transform psf
+         call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),psf_map,psf_map,fftw_forward,fftw_estimate)
+         call dfftw_execute_dft(plan,psf_map,psf_map)
+         
+         ! Inverse Fourier transform product
+         intensity_map=intensity_map*psf_map
+         call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),intensity_map,intensity_map,fftw_backward,fftw_estimate)
+         call dfftw_execute_dft(plan,intensity_map,intensity_map)
+         
+         ! set datacube map to smoothed version
+         self%i_lambda(i,:,:)=real(intensity_map,rel_kind)
+      
+      end do
+      
+      return
+      
    end subroutine
    
    pure subroutine destroy(self)

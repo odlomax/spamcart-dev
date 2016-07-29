@@ -75,7 +75,10 @@ module m_options
       
       ! datacube params
       logical(kind=log_kind) :: datacube_make                                 ! make a datacube
+      logical(kind=log_kind) :: datacube_convolve                             ! convolve datacube with psf
       character(kind=chr_kind,len=string_length) :: datacube_lambda_string    ! string of wavelenghts for data cube
+      character(kind=chr_kind,len=string_length) :: datacube_fwhm_string      ! string of beam fwhm
+      real(kind=rel_kind) :: datacube_distance                                ! distance from source to observer
       real(kind=rel_kind) :: datacube_x_min                                   ! minimum x coordinate     
       real(kind=rel_kind) :: datacube_x_max                                   ! maximum x coordinate
       real(kind=rel_kind) :: datacube_y_min                                   ! minimum y coordinate
@@ -153,7 +156,10 @@ module m_options
       
       ! set datacube  params
       self%datacube_make=.true.
-      self%datacube_lambda_string="70. 110. 160. 250. 350. 500."                    ! PACS/SPIRE
+      self%datacube_convolve=.true.
+      self%datacube_lambda_string="4.5 5.8 8.0 24. 70. 100. 160. 250. 350. 500."    ! IRAC/MIP/SPACS/SPIRE (micron)
+      self%datacube_fwhm_string="1.7 1.7 1.9 6.0 5.6 6.8 12.0 17.6 23.9 35.2"       ! PSF FWHM (arcsec)
+      self%datacube_distance=3.0856776e+18                                          ! distance from source (1 pc)
       self%datacube_x_min=-4.4879361e+16_rel_kind                                   ! 3000 au
       self%datacube_x_max=4.4879361e+16_rel_kind                                    ! 3000 au
       self%datacube_y_min=-4.4879361e+16_rel_kind                                   ! 3000 au
@@ -304,9 +310,18 @@ module m_options
                
                case("datacube_make")
                   read(param_value,*) self%datacube_make
+                  
+               case("datacube_convolve")
+                  read(param_value,*) self%datacube_convolve
                                   
                case("datacube_lambda_string")
                   self%datacube_lambda_string=param_value
+                  
+               case("datacube_fwhm_string")
+                  self%datacube_lambda_string=param_value
+                  
+               case("datacube_distance")
+                  read(param_value,*) self%datacube_distance
                   
                case("datacube_x_min")
                   read(param_value,*) self%datacube_x_min

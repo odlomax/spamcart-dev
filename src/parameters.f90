@@ -33,7 +33,7 @@ module m_kind_parameters
    integer,parameter :: cpx_kind=c_double_complex       ! c double complex kind
    integer,parameter :: chr_kind=c_char                 ! c character kind
    integer,parameter :: log_kind=c_bool                 ! c boolean kind
-   integer,parameter :: string_length=128               ! default character length
+   integer,parameter :: string_length=1024              ! default character length
    
    integer(kind=int_kind),parameter :: n_dim=3          ! number of dimensions
    
@@ -67,6 +67,8 @@ module m_constants_parameters
    ! numbers
    real(kind=rel_kind),parameter :: pi=2._rel_kind*acos(0._rel_kind)    ! 3.1412...
    real(kind=rel_kind),parameter :: one_third=1._rel_kind/3._rel_kind   ! 1/3
+   real(kind=rel_kind),parameter :: arcsec_rad=pi/6.48e+5_rel_kind     ! 1 arcsec in radians
+   real(kind=rel_kind),parameter :: fwhm_sigma=2._rel_kind*sqrt(2._rel_kind*log(2._rel_kind))   ! FWHM in units of sigma
    
    ! physical constants
    real(kind=rel_kind),parameter :: k_boltz=1.3806488e-23_rel_kind      ! Boltzmann constant [J/K]

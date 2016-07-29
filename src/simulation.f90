@@ -321,8 +321,14 @@ module m_simulation
       call self%intensity_cube%initialise(self%sph_kernel,self%sph_tree,self%dust_prop,&
          &self%sim_params%datacube_x_min,self%sim_params%datacube_x_max,self%sim_params%datacube_n_x,&
          &self%sim_params%datacube_y_min,self%sim_params%datacube_y_max,self%sim_params%datacube_n_y,&
-         &self%sim_params%datacube_angles,lambda_array=string_to_real(self%sim_params%datacube_lambda_string),&
+         &self%sim_params%datacube_angles,string_to_real(self%sim_params%datacube_lambda_string),&
          &background=self%isrf_prop,point_sources=self%point_source_array)
+         
+      if (self%sim_params%datacube_convolve) then
+         write(*,"(A)") "convolving datacube with psf"
+         call self%intensity_cube%psf_convolve&
+            &(self%sim_params%datacube_distance,string_to_real(self%sim_params%datacube_fwhm_string))
+      end if
       
       write(*,"(A)") "write out datacube"
       call  write_out_datacube_3d(self%intensity_cube%x,self%intensity_cube%y,self%intensity_cube%lambda,&

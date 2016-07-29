@@ -22,6 +22,11 @@
 
 SHELL=/bin/sh
 
+LIB_DIR=/usr/local/lib/
+INC_DIR=/usr/local/include/
+
+FFTW_LIB=fftw3
+
 COMPILER=gfortran-6
 
 EXECUTABLE=spamcart
@@ -43,10 +48,10 @@ SOURCE_DIR=./src/
 
 OBJECTS=parameters.o maths.o io.o string.o options.o atomic_update.o dust.o dust_d03.o triangular_array.o particle.o kernel.o kernel_m4.o line.o binary_tree_node.o binary_tree.o ray.o source.o source_point_bb.o source_external_bb.o source_external_ps05.o datacube.o simulation.o main.o
 
-COMPILE_LINE=$(COMPILER) $(OPTIONS) -c $(SOURCE_DIR)
+COMPILE_LINE=$(COMPILER) $(OPTIONS) -I$(INC_DIR) -c $(SOURCE_DIR)
 
 main: $(OBJECTS) $(MODULES)
-	$(COMPILER) $(OPTIONS) -o $(EXECUTABLE) $(OBJECTS)
+	$(COMPILER) $(OPTIONS) -o $(EXECUTABLE) $(OBJECTS) -L$(LIB_DIR) -l$(FFTW_LIB)
 
 parameters.o: $(SOURCE_DIR)parameters.f90
 	$(COMPILE_LINE)parameters.f90
