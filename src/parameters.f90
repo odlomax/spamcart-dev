@@ -33,7 +33,7 @@ module m_kind_parameters
    integer,parameter :: cpx_kind=c_double_complex       ! c double complex kind
    integer,parameter :: chr_kind=c_char                 ! c character kind
    integer,parameter :: log_kind=c_bool                 ! c boolean kind
-   integer,parameter :: string_length=1024              ! default character length
+   integer,parameter :: string_length=2048              ! default character length
    
    integer(kind=int_kind),parameter :: n_dim=3          ! number of dimensions
    

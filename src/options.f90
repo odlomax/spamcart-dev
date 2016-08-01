@@ -130,7 +130,7 @@ module m_options
       
       ! external radiation field parameters
       self%ext_rf=.true.
-      self%ext_rf_type="bb"
+      self%ext_rf_type="ps05"
       self%ext_rf_cmb=.true.
       self%ext_rf_gal_r=8.5_rel_kind
       self%ext_rf_gal_z=0._rel_kind
@@ -157,7 +157,7 @@ module m_options
       ! set datacube  params
       self%datacube_make=.true.
       self%datacube_convolve=.true.
-      self%datacube_lambda_string="4.5 5.8 8.0 24. 70. 100. 160. 250. 350. 500."    ! IRAC/MIP/SPACS/SPIRE (micron)
+      self%datacube_lambda_string="4.5 5.8 8.0 24. 70. 100. 160. 250. 350. 500."    ! IRAC/MIPS/PACS/SPIRE (micron)
       self%datacube_fwhm_string="1.7 1.7 1.9 6.0 5.6 6.8 12.0 17.6 23.9 35.2"       ! PSF FWHM (arcsec)
       self%datacube_distance=3.0856776e+18                                          ! distance from source (1 pc)
       self%datacube_x_min=-4.4879361e+16_rel_kind                                   ! 3000 au
@@ -318,7 +318,7 @@ module m_options
                   self%datacube_lambda_string=param_value
                   
                case("datacube_fwhm_string")
-                  self%datacube_lambda_string=param_value
+                  self%datacube_fwhm_string=param_value
                   
                case("datacube_distance")
                   read(param_value,*) self%datacube_distance

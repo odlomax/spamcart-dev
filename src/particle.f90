@@ -148,9 +148,9 @@ module m_particle
       value=0._rel_kind
       if (associated(self%lambda_array)) then
       
-         if (lambda>=self%lambda_array(1).and.lambda<=self%lambda_array(size(self%lambda_array))) then
+         if (lambda>self%lambda_array(1).and.lambda<self%lambda_array(size(self%lambda_array))) then
 
-            value=self%a_dot_scatter_array(binary_search(lambda,self%lambda_array))    
+            value=value+self%a_dot_scatter_array(binary_search(lambda,self%lambda_array))    
                
          end if   
          

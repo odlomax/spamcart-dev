@@ -430,13 +430,7 @@ module m_ray
          ! scattering source term
          if (associated(self%item(i)%particle_ptr%lambda_array)) then
          
-            if (lambda_em>self%item(i)%particle_ptr%lambda_array(1).and.&
-               &lambda_em<self%item(i)%particle_ptr%lambda_array(size(self%item(i)%particle_ptr%lambda_array))) then
-         
-               j_value=j_value+self%item(i)%particle_ptr%&
-                  &a_dot_scatter_array(binary_search(lambda_em,self%item(i)%particle_ptr%lambda_array))*0.25_rel_kind/pi
-               
-            end if
+            j_value=j_value+self%item(i)%particle_ptr%a_dot_scatter(lambda_em)*0.25_rel_kind/pi
          
          end if
          

@@ -145,7 +145,7 @@ module m_datacube
       end do
       
       ! generate data cube from dust
-      !$omp parallel num_threads(num_threads) default(shared) private(i,j,k,pix_position,thread_num)
+      !$omp parallel num_threads(num_threads) default(shared) private(i,j,k,pix_position,i_bg,thread_num)
       
          thread_num=omp_get_thread_num()+1
          !$omp do collapse(1)
@@ -191,8 +191,8 @@ module m_datacube
                   ! set up ray from star to screen
                   call sph_ray(thread_num)%ray_trace_initialise(point_sources(l)%position,img_z_unit)
          
-                  x_img=dot_product(point_sources(l)%position,img_x_unit)
-                  y_img=dot_product(point_sources(l)%position,img_y_unit)
+                  x_img=dot_product(point_sources(l)%position-sph_tree%com,img_x_unit)
+                  y_img=dot_product(point_sources(l)%position-sph_tree%com,img_y_unit)
          
                   if (x_img>self%x(1).and.x_img<self%x(size(self%x)).and.y_img>self%y(1).and.y_img<self%y(size(self%y))) then
          
