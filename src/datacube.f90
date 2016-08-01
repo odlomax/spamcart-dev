@@ -181,7 +181,7 @@ module m_datacube
       ! generate intensities from stars
       if (present(point_sources)) then
       
-         !$omp parallel num_threads(num_threads) default(shared) private(i,j,k,l)
+         !$omp parallel num_threads(num_threads) default(shared) private(i,j,k,l,x_img,y_img,v_rec,thread_num)
       
             thread_num=omp_get_thread_num()+1
             !$omp do
@@ -226,80 +226,83 @@ module m_datacube
    end subroutine
    
    ! convolve datacube images with Gaussian PSF
-   subroutine psf_convolve(self,distance,fwhm_array)
-   
-      include "fftw3.f03"
-      
-      ! argument declarations
-      class(datacube),intent(inout) :: self                                ! datacube object
-      real(kind=rel_kind) :: distance                                      ! observer source distance
-      real(kind=rel_kind) :: fwhm_array(:)                                 ! array of beam fwhm (arcseconds)
-      
-      ! variable declarations
-      integer(kind=int_kind) :: i,j,k                                      ! counter
-      integer(kind=int_kind) :: plan                                       ! fftw plan variable
-      real(kind=rel_kind) :: centre(2)                                     ! centre of grid
-      real(kind=rel_kind) :: r                                             ! distance from centre of grid
-      real(kind=rel_kind) :: sigma                                         ! standard deviation of absolute beam size
-      real(kind=rel_kind) :: sigma_conv                                    ! fwhm -> sigma conversion factor
-      complex(kind=cpx_kind) :: intensity_map(size(self%x),size(self%y))   ! intensity map
-      complex(kind=cpx_kind) :: psf_map(size(self%x),size(self%y))         ! point spread function
-      
-      ! check fwhm array has correct number of elements
-      if (size(fwhm_array)/=size(self%lambda)) then
-         write(*,"(A)") "Incorrect number of beam sizes. Cannot convolve."
-         return      
-      end if
-      
-      centre=0.5_rel_kind*(/self%x(1)+self%x(size(self%x)),self%y(1)+self%y(size(self%y))/)
-      sigma_conv=distance*arcsec_rad/fwhm_sigma
-      do i=1,size(self%lambda)
-         
-         ! set complex map
-         intensity_map=cmplx(self%i_lambda(i,:,:),0.,rel_kind)
-         sigma=fwhm_array(i)*sigma_conv
-         
-         ! set pdf grid
-         do concurrent (k=1:size(self%y))
-            do concurrent (j=1:size(self%x))
-            
-               ! calculate distance from centre
-               r=norm2((/self%x(j),self%y(k)/)-centre)
-               
-               ! set psf
-               psf_map(j,k)=cmplx(exp(-r**2/(2._rel_kind*sigma**2)),0.,rel_kind)
-            
-            end do
+subroutine psf_convolve(self,distance,fwhm_array)
+
+   include "fftw3.f03"
+
+   ! argument declarations
+   class(datacube),intent(inout) :: self                                ! datacube object
+   real(kind=rel_kind) :: distance                                      ! observer source distance
+   real(kind=rel_kind) :: fwhm_array(:)                                 ! array of beam fwhm (arcseconds)
+
+   ! variable declarations
+   integer(kind=int_kind) :: i,j,k                                      ! counter
+   integer(kind=int_kind) :: plan                                       ! fftw plan variable
+   real(kind=rel_kind) :: centre(2)                                     ! centre of grid
+   real(kind=rel_kind) :: r                                             ! distance from centre of grid
+   real(kind=rel_kind) :: sigma                                         ! standard deviation of absolute beam size
+   real(kind=rel_kind) :: sigma_conv                                    ! fwhm -> sigma conversion factor
+   real(kind=rel_kind) :: psf_norm                                      ! psf normalisation
+   complex(kind=cpx_kind) :: intensity_map(size(self%x),size(self%y))   ! intensity map
+   complex(kind=cpx_kind) :: psf_map(size(self%x),size(self%y))         ! point spread function
+
+   ! check fwhm array has correct number of elements
+   if (size(fwhm_array)/=size(self%lambda)) then
+      write(*,"(A)") "Incorrect number of beam sizes. Cannot convolve."
+      return      
+   end if
+
+   centre=0.5_rel_kind*(/self%x(1)+self%x(size(self%x)),self%y(1)+self%y(size(self%y))/)
+   sigma_conv=distance*arcsec_rad/fwhm_sigma
+
+   do i=1,size(self%lambda)
+ 
+      ! set complex map
+      intensity_map=cmplx(self%i_lambda(i,:,:),0.,rel_kind)
+      sigma=max(fwhm_array(i)*sigma_conv,self%x(2)-self%x(1),self%y(2)-self%y(1))
+ 
+      ! set pdf grid
+      do concurrent (k=1:size(self%y))
+         do concurrent (j=1:size(self%x))
+    
+            ! calculate distance from centre
+            r=norm2((/self%x(j),self%y(k)/)-centre)
+       
+            ! set psf
+            psf_map(j,k)=cmplx(exp(-r**2/(2._rel_kind*sigma**2)),0.,rel_kind)
+    
          end do
-         ! normalise psf
-         psf_map=cmplx(real(psf_map,rel_kind)/(sum(real(psf_map,rel_kind))*size(psf_map)),0.,rel_kind)
-         
-         ! cshift psf
-         psf_map=cshift(psf_map,size(self%x)/2,1)
-         psf_map=cshift(psf_map,size(self%y)/2,2)
-         
-         
-         ! Fourier transform intensity map
-         call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),intensity_map,intensity_map,fftw_forward,fftw_estimate)
-         call dfftw_execute_dft(plan,intensity_map,intensity_map)
-         
-         ! Fourier transform psf
-         call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),psf_map,psf_map,fftw_forward,fftw_estimate)
-         call dfftw_execute_dft(plan,psf_map,psf_map)
-         
-         ! Inverse Fourier transform product
-         intensity_map=intensity_map*psf_map
-         call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),intensity_map,intensity_map,fftw_backward,fftw_estimate)
-         call dfftw_execute_dft(plan,intensity_map,intensity_map)
-         
-         ! set datacube map to smoothed version
-         self%i_lambda(i,:,:)=real(intensity_map,rel_kind)
-      
       end do
-      
-      return
-      
-   end subroutine
+      ! normalise psf
+      psf_norm=sum(real(psf_map,rel_kind))*real(size(psf_map))
+      psf_map=cmplx(real(psf_map,rel_kind)/psf_norm,0.,rel_kind)
+ 
+      ! cshift psf
+      psf_map=cshift(psf_map,size(self%x)/2,1)
+      psf_map=cshift(psf_map,size(self%y)/2,2)
+ 
+ 
+      ! Fourier transform intensity map
+      call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),intensity_map,intensity_map,fftw_forward,fftw_estimate)
+      call dfftw_execute_dft(plan,intensity_map,intensity_map)
+ 
+      ! Fourier transform psf
+      call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),psf_map,psf_map,fftw_forward,fftw_estimate)
+      call dfftw_execute_dft(plan,psf_map,psf_map)
+ 
+      ! Inverse Fourier transform product
+      intensity_map=intensity_map*psf_map
+      call dfftw_plan_dft_2d(plan,size(self%y),size(self%x),intensity_map,intensity_map,fftw_backward,fftw_estimate)
+      call dfftw_execute_dft(plan,intensity_map,intensity_map)
+ 
+      ! set datacube map to smoothed version
+      self%i_lambda(i,:,:)=real(intensity_map,rel_kind)
+
+   end do
+
+   return
+
+end subroutine
    
    pure subroutine destroy(self)
    

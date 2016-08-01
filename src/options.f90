@@ -355,6 +355,9 @@ module m_options
       
       end do
       
+      ! sort out conflicts
+      if (self%sim_n_it==0) self%sph_scattered_light=.false.
+      
       ! close params file
       close(1)
    

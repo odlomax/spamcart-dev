@@ -581,6 +581,7 @@ module m_io
       character(kind=chr_kind,len=string_length),intent(in) :: sim_id! run id
       
       ! variable declarations
+      real(kind=rel_kind) :: d_a                                     ! pixel size
       character(kind=chr_kind,len=string_length) :: file_name        ! file name
       
       ! variable declarations
@@ -606,6 +607,7 @@ module m_io
       end do
       
       ! write out spectrum
+      d_a=((x(size(x))-x(1))*(y(size(y))-y(1)))/real(size(x)*size(y),rel_kind)
       open(1,file=trim(sim_id)//"_spectrum.dat")
       
       write(1,"(2(A25))") "lambda","I_lambda"
@@ -613,8 +615,7 @@ module m_io
       
       do i=1,size(lambda)
       
-         write(1,"(2(E25.17))") lambda(i),trapz_intgr(y,(/(trapz_intgr(x,i_lambda(i,:,j)),j=1,size(y))/))
-      
+         write(1,"(2(E25.17))") lambda(i),sum(i_lambda(i,:,:))*d_a
       end do
       
       close(1)
