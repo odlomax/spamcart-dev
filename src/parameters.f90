@@ -67,7 +67,8 @@ module m_constants_parameters
    ! numbers
    real(kind=rel_kind),parameter :: pi=2._rel_kind*acos(0._rel_kind)    ! 3.1412...
    real(kind=rel_kind),parameter :: one_third=1._rel_kind/3._rel_kind   ! 1/3
-   real(kind=rel_kind),parameter :: arcsec_rad=pi/6.48e+5_rel_kind     ! 1 arcsec in radians
+   real(kind=rel_kind),parameter :: root_two=sqrt(2._rel_kind)          ! sqrt of two
+   real(kind=rel_kind),parameter :: arcsec_rad=pi/6.48e+5_rel_kind      ! 1 arcsec in radians
    real(kind=rel_kind),parameter :: fwhm_sigma=2._rel_kind*sqrt(2._rel_kind*log(2._rel_kind))   ! FWHM in units of sigma
    
    ! physical constants

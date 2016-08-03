@@ -300,8 +300,8 @@ module m_binary_tree_node
                &(dot_product(self%particle_array(i)%v-v_em,n_em)/c_light+1._rel_kind)
             dust_mass_ext=dust_prop%dust_mass_ext(lambda_ob)
             
-            inv_mfp=inv_mfp+self%particle_array(i)%m*dust_mass_ext*w
-            grad_inv_mfp=grad_inv_mfp+self%particle_array(i)%m*dust_mass_ext*grad_w
+            inv_mfp=inv_mfp+self%particle_array(i)%f_sub*self%particle_array(i)%m*dust_mass_ext*w
+            grad_inv_mfp=self%particle_array(i)%f_sub*grad_inv_mfp+self%particle_array(i)%m*dust_mass_ext*grad_w
               
          end do
       

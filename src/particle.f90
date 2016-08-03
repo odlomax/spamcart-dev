@@ -25,6 +25,7 @@
 module m_particle
 
    use m_kind_parameters
+   use m_constants_parameters
    use m_maths
    
    implicit none
@@ -44,6 +45,7 @@ module m_particle
       real(kind=rel_kind) :: rho                ! density of particle
       real(kind=rel_kind) :: a_dot              ! mass weighted energy absorbtion rate
       real(kind=rel_kind) :: a_dot_new          ! new a_dot
+      real(kind=rel_kind) :: f_sub              ! sublimation fraction
       real(kind=rel_kind),pointer,contiguous :: lambda_array(:)      ! wavelength array
       real(kind=rel_kind),pointer,contiguous :: a_dot_scatter_array(:)  ! scattered light intensity bins
       
@@ -52,7 +54,7 @@ module m_particle
       procedure,non_overridable :: initialise
       procedure,non_overridable :: destroy
       procedure,non_overridable :: normalise_a
-      procedure,non_overridable :: reset_a_dot_scatter
+      procedure,non_overridable :: reset_a_dot
       procedure,non_overridable :: a_dot_scatter
    
    end type
@@ -68,9 +70,9 @@ module m_particle
       real(kind=rel_kind),intent(in) :: v(n_dim)! velocity
       real(kind=rel_kind),intent(in) :: m       ! mass
       real(kind=rel_kind),intent(in) :: a_dot   ! energy absorption rate per unit mass
-      real(kind=rel_kind),intent(in),optional :: lambda_min     ! minimum wavelength
-      real(kind=rel_kind),intent(in),optional :: lambda_max     ! maximum wavelength
-      integer(kind=int_kind),intent(in),optional :: n_bins      ! number of intensity bins
+      real(kind=rel_kind),intent(in),optional :: lambda_min    ! minimum wavelength
+      real(kind=rel_kind),intent(in),optional :: lambda_max    ! maximum wavelength
+      integer(kind=int_kind),intent(in),optional :: n_bins     ! number of intensity bins
       
       ! set quantities
       self%r=r
@@ -79,7 +81,9 @@ module m_particle
       self%h=0._rel_kind
       self%a_dot=a_dot
       self%a_dot_new=0._rel_kind
+      self%f_sub=1._rel_kind
       
+      ! set scattering arrays
       if (present(lambda_min).and.present(lambda_max).and.present(n_bins)) then
          allocate(self%lambda_array(n_bins))
          allocate(self%a_dot_scatter_array(n_bins-1))
@@ -112,13 +116,13 @@ module m_particle
       ! argument declarations
       class(particle),intent(inout) :: self  ! particle object
       
-      self%a_dot=self%a_dot_new/self%m
+      self%a_dot=self%a_dot_new/(self%m*self%f_sub)
       self%a_dot_new=0._rel_kind
       
       if (associated(self%a_dot_scatter_array)) then
       
          self%a_dot_scatter_array=self%a_dot_scatter_array/&
-            &((self%lambda_array(2:)-self%lambda_array(:size(self%lambda_array)-1))*self%m)
+            &((self%lambda_array(2:)-self%lambda_array(:size(self%lambda_array)-1))*self%m*self%f_sub)
       
       end if
       
@@ -126,12 +130,21 @@ module m_particle
    
    end subroutine
    
-   elemental subroutine reset_a_dot_scatter(self)
+   ! reset scattering array and dust sublimation fraction
+   elemental subroutine reset_a_dot(self,sub_a_dot_min,sub_a_dot_max)
    
       ! argument declarations
       class(particle),intent(inout) :: self        ! particle object
+      real(kind=rel_kind),intent(in) :: sub_a_dot_min ! minimum dust sublimation temperature
+      real(kind=rel_kind),intent(in) :: sub_a_dot_max ! maximum dust sublimation temperature
       
       if (associated(self%a_dot_scatter_array)) self%a_dot_scatter_array=0._rel_kind
+      
+      ! vary f_sub smoothly between very small number and 1
+      self%f_sub=max(0.5_rel_kind-0.5_rel_kind*erf((self%a_dot-0.5_rel_kind*(sub_a_dot_max+sub_a_dot_min))/&
+         &(root_two*0.5_rel_kind*(sub_a_dot_max-sub_a_dot_min))),epsilon(0._rel_kind))
+         
+      return
    
    end subroutine
    

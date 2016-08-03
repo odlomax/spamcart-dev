@@ -101,6 +101,7 @@ module m_simulation
       
       write(*,"(A)") "read in particles"
       call read_in_sph_particles_3d(position,mass,temperature,self%sim_params%sim_cloud_file)
+      if (.not.self%sim_params%sim_restart) temperature=self%sim_params%sim_initial_t
       allocate(self%particle_array(size(position,2)))
       
       write(*,"(A)") "initialise particles"
@@ -228,8 +229,9 @@ module m_simulation
          call self%lum_packet_array(i)%initialise(self%sph_kernel,self%sph_tree,self%dust_prop)
       end do
       
-      ! reset scattered light bins
-      call self%particle_array%reset_a_dot_scatter()
+      ! reset scattered light bins and sublimation fraction
+      call self%particle_array%reset_a_dot(4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(self%sim_params%dust_sub_t_min),&
+         &4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(self%sim_params%dust_sub_t_max))
       
       if (associated(self%point_source_array)) then
       
@@ -288,7 +290,7 @@ module m_simulation
       end if
       
       ! normalise absorption rate
-      call self%particle_array%normalise_a()
+!       call self%particle_array%normalise_a()
       
       ! write out particles
       write(*,"(A)") "write out particles"
@@ -298,7 +300,7 @@ module m_simulation
          position_array(:,i)=self%particle_array(i)%r
       end do
       call write_out_sph_particles_3d(position_array,self%particle_array%m,&
-         &self%dust_prop%dust_temperature(self%particle_array%a_dot),self%particle_array%rho,self%particle_array%h,output_file)
+         &self%dust_prop%dust_temperature(self%particle_array%a_dot),self%particle_array%rho,self%particle_array%f_sub,output_file)
       
       ! deallocate luminosity packets
       call self%lum_packet_array%destroy()

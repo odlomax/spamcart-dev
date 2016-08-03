@@ -39,6 +39,8 @@ module m_options
       character(kind=chr_kind,len=string_length) :: sim_id                    ! simulation run id
       integer(kind=int_kind) :: sim_n_packet                                  ! number of luminosity packets per iteration
       integer(kind=int_kind) :: sim_n_it                                      ! number of iterations
+      logical(kind=log_kind) :: sim_restart                                   ! restart sim? (don't use sim_initial_t)
+      real(kind=rel_kind) :: sim_initial_t                                    ! initial background temperature
       
       ! dust params
       real(kind=rel_kind) :: dust_t_min                                       ! minimum dust temperature
@@ -46,6 +48,8 @@ module m_options
       integer(kind=int_kind) :: dust_n_t                                      ! number of dust temperature samples
       real(kind=rel_kind) :: dust_r_v                                         ! dust extinction cure coeff
       logical(kind=log_kind) :: dust_iso_scatter                              ! isotropic scattering
+      real(kind=rel_kind) :: dust_sub_t_min                                   ! minimum dust sublimation temperature
+      real(kind=rel_kind) :: dust_sub_t_max                                   ! maximum dust sublimation temperature
       
       ! external radiation field params
       logical(kind=log_kind) :: ext_rf                                        ! include an external radiation field
@@ -120,13 +124,17 @@ module m_options
       self%sim_id=""
       self%sim_n_packet=1000000
       self%sim_n_it=5
+      self%sim_restart=.false.
+      self%sim_initial_t=10._rel_kind
       
       ! dust table parameters
       self%dust_t_min=1.e+0_rel_kind
       self%dust_t_max=1.e+4_rel_kind
       self%dust_n_t=801
       self%dust_r_v=5.5_rel_kind
-      self%dust_iso_scatter=.true.       
+      self%dust_iso_scatter=.true.
+      self%dust_sub_t_min=450._rel_kind
+      self%dust_sub_t_max=550._rel_kind
       
       ! external radiation field parameters
       self%ext_rf=.true.
@@ -235,6 +243,12 @@ module m_options
                   
                case("sim_n_it")
                   read(param_value,*) self%sim_n_it
+               
+               case("sim_restart")
+                  read(param_value,*) self%sim_restart
+                  
+               case("sim_initial_t")
+                  read(param_value,*) self%sim_initial_t
                   
                case("dust_t_min")
                   read(param_value,*) self%dust_t_min
@@ -247,6 +261,12 @@ module m_options
                
                case("dust_iso_scatter")
                   read(param_value,*) self%dust_iso_scatter
+                  
+               case("dust_sub_t_min")
+                  read(param_value,*) self%dust_sub_t_min
+                  
+               case("dust_sub_t_max")
+                  read(param_value,*) self%dust_sub_t_max
                   
                case("ext_rf")
                   read(param_value,*) self%ext_rf

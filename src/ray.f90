@@ -57,6 +57,7 @@ module m_ray
       real(kind=rel_kind) :: lambda_ob          ! rest frame wavelength
       real(kind=rel_kind) :: kappa_ext          ! dust mass extinction coeff
       real(kind=rel_kind) :: a                  ! dust albedo
+      real(kind=rel_kind) :: f_sub              ! dust sublimation fraction
       type(particle),pointer :: particle_ptr    ! particle pointer
       
       contains
@@ -118,6 +119,7 @@ module m_ray
       self%inv_h=sph_particle%inv_h
       self%inv_rho=sph_particle%inv_rho
       self%a_dot=sph_particle%a_dot
+      self%f_sub=sph_particle%f_sub
       self%particle_ptr=>sph_particle
       
       return
@@ -352,7 +354,7 @@ module m_ray
 !          write(*,*) "ray length",self%path%length
 !          write(*,*) "optical depth",tau
 !          write(*,*)
-         
+!          
 !          write(1,*) self%path%origin
 !          write(1,*) origin
 !          write(1,*)
@@ -619,7 +621,7 @@ module m_ray
          sigma_0=self%sph_kernel%sigma(self%item(i)%b,self%item(i)%s_0)
          sigma_1=self%sph_kernel%sigma(self%item(i)%b,self%item(i)%s_1)
          self%item(i)%sigma=&
-            self%item(i)%m*self%item(i)%inv_h**(n_dim-1)*&
+            self%item(i)%f_sub*self%item(i)%m*self%item(i)%inv_h**(n_dim-1)*&
             merge(sigma_0+sigma_1,abs(sigma_0-sigma_1),&
             &self%item(i)%t_r>0._rel_kind.and.self%item(i)%t_r<self%path%length)
       
@@ -756,7 +758,8 @@ module m_ray
       ! result declaration
       real(kind=rel_kind) :: inv_mfp_value              ! inv_mfp at path%length
       
-      inv_mfp_value=sum(self%item(:self%n_item)%m*&
+      inv_mfp_value=sum(self%item(:self%n_item)%f_sub*&
+         &self%item(:self%n_item)%m*&
          &self%item(:self%n_item)%inv_h**(n_dim)*&
          &self%item(:self%n_item)%kappa_ext*&
          &self%sph_kernel%w(self%item(:self%n_item)%s_1))
@@ -779,7 +782,7 @@ module m_ray
       grad_inv_mfp_value=0._rel_kind
       do i=1,self%n_item
       
-         grad_inv_mfp_value=grad_inv_mfp_value+self%item(i)%m*&
+         grad_inv_mfp_value=grad_inv_mfp_value+self%item(i)%f_sub*self%item(i)%m*&
             &self%item(i)%inv_h**(n_dim+2)*&
             &self%item(i)%kappa_ext*&
             &self%sph_kernel%dw_dr(self%item(i)%s_1)*&
