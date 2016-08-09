@@ -408,7 +408,6 @@ module m_dust
       
       ! variable declarations
       integer(kind=int_kind) :: i,j                            ! counter
-      real(kind=rel_kind) :: temp_cum_planck_array(size(self%wavelength_array))  ! temporary array
       
       ! allocate arrays
       allocate(self%mrw_zeta_array(n_mrw))
@@ -443,7 +442,7 @@ module m_dust
       end do
       
       ! create remaining arrays
-      do i=1,size(self%temperature_array)
+      do concurrent (i=1:size(self%temperature_array))
       
          ! planck function
          self%mrw_planck_function_array(:,i)=planck_lambda(self%wavelength_array,self%temperature_array(i))
@@ -458,11 +457,8 @@ module m_dust
          self%mrw_inv_planck_ext_array=self%mrw_bol_planck_function_array(i)/&
             &trapz_intgr(self%wavelength_array,(1._rel_kind/self%dust_mass_ext_array)*self%mrw_planck_function_array(:,i))
          
-         ! make sure there are no NaNs in mrw_planck_sca_array
-         temp_cum_planck_array=cum_dist_func(self%wavelength_array,self%mrw_planck_function_array(:,i),.false._log_kind)
-         self%mrw_planck_sca_array(:,i)=merge(cum_dist_func(self%wavelength_array,self%dust_mass_ext_array*self%albedo_array*&
-            &self%mrw_planck_function_array(:,i),.false._log_kind)/temp_cum_planck_array,&
-            &0._rel_kind,temp_cum_planck_array>0._rel_kind)
+         self%mrw_planck_sca_array(:,i)=cum_dist_func(self%wavelength_array,self%dust_mass_ext_array*self%albedo_array*&
+            &self%mrw_planck_function_array(:,i),.false._log_kind)/self%mrw_bol_planck_function_array(i)
          
       end do
       

@@ -143,8 +143,8 @@ module m_options
       self%dust_n_t=801
       self%dust_r_v=5.5_rel_kind
       self%dust_iso_scatter=.true.
-      self%dust_sub_t_min=450._rel_kind
-      self%dust_sub_t_max=550._rel_kind
+      self%dust_sub_t_min=900._rel_kind
+      self%dust_sub_t_max=1100._rel_kind
       
       ! external radiation field parameters
       self%ext_rf=.true.
