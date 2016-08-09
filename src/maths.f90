@@ -34,37 +34,42 @@ module m_maths
    ! generic interfaces
    
    interface quicksort
-      procedure quicksort_1
-      procedure quicksort_2
+      procedure :: quicksort_1
+      procedure :: quicksort_2
    end interface
    
    interface lerp
-      procedure lerp_1
-      procedure lerp_2
+      procedure :: lerp_1
+      procedure :: lerp_2
    end interface
    
    interface gerp
-      procedure gerp_1
-      procedure gerp_2
+      procedure :: gerp_1
+      procedure :: gerp_2
    end interface
    
    interface lookup_and_interpolate
-      procedure lookup_and_interpolate_1
-      procedure lookup_and_interpolate_2
-      procedure lookup_and_interpolate_3
+      procedure :: lookup_and_interpolate_1
+      procedure :: lookup_and_interpolate_2
+      procedure :: lookup_and_interpolate_3
    end interface
    
    interface lookup_and_geo_interpolate
-      procedure lookup_and_geo_interpolate_1
-      procedure lookup_and_geo_interpolate_2
+      procedure :: lookup_and_geo_interpolate_1
+      procedure :: lookup_and_geo_interpolate_2
+   end interface
+   
+   interface trapz_intgr
+      procedure :: indef_trapz_intgr
+      procedure :: def_trapz_intgr
    end interface
    
    interface make_hist
-      procedure make_hist_1d
+      procedure :: make_hist_1d
    end interface
    
    interface rotate_vector
-      procedure rotate_vector_3d
+      procedure :: rotate_vector_3d
    end interface
 
    contains
@@ -681,7 +686,7 @@ module m_maths
    end function
    
    ! perform a trapezoidal integration
-   pure function trapz_intgr(x_values,f_values) result (value)
+   pure function indef_trapz_intgr(x_values,f_values) result (value)
    
       ! argument declarations
       real(kind=rel_kind),intent(in) :: x_values(:)   ! array of x
@@ -702,12 +707,55 @@ module m_maths
    
    end function
    
-   ! create cumulative dist of f(x)
-   pure function cum_dist_func(x_values,f_values) result (values)
+   ! perform a definite trapezoidal integration
+   pure function def_trapz_intgr(x_values,f_values,x_low,x_high) result (value)
    
       ! argument declarations
       real(kind=rel_kind),intent(in) :: x_values(:)   ! array of x
       real(kind=rel_kind),intent(in) :: f_values(:)   ! array of f(x)
+      real(kind=rel_kind),intent(in) :: x_low         ! x lower bound
+      real(kind=rel_kind),intent(in) :: x_high        ! x upper bound
+      
+      ! result declaration
+      real(kind=rel_kind) :: value                    ! integral of f(x)dx
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i_x_low               ! index of x_low
+      integer(kind=int_kind) :: i_x_high              ! index of x_high
+      real(kind=rel_kind) :: x_low_mod                ! modified x_low
+      real(kind=rel_kind) :: x_high_mod               ! modified x_high
+      
+      ! set x_low and x_high
+      x_low_mod=max(x_low,x_values(1))
+      x_high_mod=min(x_high,x_values(size(x_values)))
+      i_x_low=binary_search(x_low_mod,x_values)
+      i_x_high=binary_search(x_high_mod,x_values)
+      
+   
+      ! perform integral
+      value=0._rel_kind
+      
+      ! integral of upper limit
+      if (i_x_high>1) value=value+trapz_intgr(x_values(:i_x_high),f_values(:i_x_high))
+      value=value+0.5_rel_kind*(lerp(x_high_mod,x_values(i_x_high),x_values(i_x_high+1),f_values(i_x_high),f_values(i_x_high+1))+&
+         &f_values(i_x_high))*(x_high_mod-x_values(i_x_high))
+         
+      ! integral of lower limit
+      if (i_x_low>1) value=value-trapz_intgr(x_values(:i_x_low),f_values(:i_x_low))
+      value=value-0.5_rel_kind*(lerp(x_low_mod,x_values(i_x_low),x_values(i_x_low+1),f_values(i_x_low),f_values(i_x_low+1))+&
+         &f_values(i_x_low))*(x_low_mod-x_values(i_x_low))
+         
+      return
+   
+   end function
+   
+   ! create cumulative dist of f(x)
+   pure function cum_dist_func(x_values,f_values,normalise) result (values)
+   
+      ! argument declarations
+      real(kind=rel_kind),intent(in) :: x_values(:)   ! array of x
+      real(kind=rel_kind),intent(in) :: f_values(:)   ! array of f(x)
+      logical(kind=log_kind),intent(in),optional :: normalise  ! normalise distribution to one
       
       ! result declaration
       real(kind=rel_kind) :: values(size(x_values))   ! integral of f(x)dx
@@ -728,7 +776,9 @@ module m_maths
             &(x_values(i)-x_values(i-1))
       end do
       ! normalise distribution to one
-      values=values/values(n_x)
+      if (present(normalise)) then
+         if (normalise) values=values/values(n_x)
+      end if
       
       return
    

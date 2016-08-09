@@ -98,6 +98,11 @@ module m_simulation
       allocate(dust_d03::self%dust_prop)
       call self%dust_prop%initialise(self%sim_params%dust_r_v,self%sim_params%dust_t_min,self%sim_params%dust_t_max,&
          &self%sim_params%dust_n_t,iso_scatter=self%sim_params%dust_iso_scatter)
+         
+      if (self%sim_params%sim_mrw) then
+         write(*,"(A)") "initialise modified random walk"
+         call self%dust_prop%mrw_initialise(self%sim_params%sim_n_mrw)
+      end if
       
       write(*,"(A)") "read in particles"
       call read_in_sph_particles_3d(position,mass,temperature,self%sim_params%sim_cloud_file)
@@ -118,7 +123,7 @@ module m_simulation
       
       write(*,"(A)") "initialise tree"
       allocate(self%sph_tree)
-      call self%sph_tree%initialise(self%particle_array,self%sph_kernel,self%sim_params%sph_eta)
+      call self%sph_tree%initialise(self%particle_array,self%sph_kernel,self%sim_params%sph_eta,self%sim_params%sim_min_d)
       
       if (self%sim_params%point_sources) then
       
@@ -247,7 +252,8 @@ module m_simulation
                do j=1,n_packets_source
                   call self%lum_packet_array(thread_num)%follow(self%point_source_array(i)%position,&
                      &self%point_source_array(i)%random_direction(),self%point_source_array(i)%velocity,&
-                     &self%point_source_array(i)%random_wavelength(),luminosity_chunk)
+                     &self%point_source_array(i)%random_wavelength(),luminosity_chunk,&
+                     &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma)
                
                   if (mod(j,min(1000,n_packets_source))==0.and.thread_num==1) &
                      &write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)") &
@@ -276,7 +282,8 @@ module m_simulation
                   position=self%isrf_prop%random_position()
                   call self%lum_packet_array(thread_num)%follow(position,&
                      &self%isrf_prop%random_direction(position),self%isrf_prop%velocity,&
-                     &self%isrf_prop%random_wavelength(),luminosity_chunk)
+                     &self%isrf_prop%random_wavelength(),luminosity_chunk,&
+                     &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma)
                
                   if (mod(j,min(1000,n_packets_source))==0.and.thread_num==1) &
                      &write(*,"(A,I0,A,I0,A,I0,A,I0)") &
@@ -290,7 +297,7 @@ module m_simulation
       end if
       
       ! normalise absorption rate
-!       call self%particle_array%normalise_a()
+      call self%particle_array%normalise_a()
       
       ! write out particles
       write(*,"(A)") "write out particles"

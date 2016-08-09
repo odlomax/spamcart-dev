@@ -254,18 +254,19 @@ module m_binary_tree_node
    
    ! calculate the inverse mean free path, and its gradient
    pure recursive subroutine sph_inv_mfp(self,sph_kernel,dust_prop,&
-      &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp)
+      &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h)
    
       ! argument declarations
       class(binary_tree_node),intent(in) :: self                ! binary tree node object
-      class(kernel),intent(in) :: sph_kernel                  ! sph kernel object
+      class(kernel),intent(in) :: sph_kernel                    ! sph kernel object
       class(dust),intent(in) :: dust_prop                       ! dust properties object
       real(kind=rel_kind),intent(in) :: r(n_dim)                ! position
       real(kind=rel_kind),intent(in) :: lambda_em               ! wavelength of emission
       real(kind=rel_kind),intent(in) :: n_em(n_dim)             ! direction of emission
       real(kind=rel_kind),intent(in) :: v_em(n_dim)             ! velocity of emission
-      real(kind=rel_kind),intent(out) :: inv_mfp                ! inverse mean free path
-      real(kind=rel_kind),intent(out) :: grad_inv_mfp(n_dim)    ! gradient of inverse mean free path
+      real(kind=rel_kind),intent(inout) :: inv_mfp              ! inverse mean free path
+      real(kind=rel_kind),intent(inout) :: grad_inv_mfp(n_dim)  ! gradient of inverse mean free path
+      real(kind=rel_kind),intent(inout) :: h                    ! smoothing length
        
       ! variable declarations
       integer(kind=int_kind) :: i                               ! counter
@@ -282,27 +283,28 @@ module m_binary_tree_node
       
          ! recurse down tree
          call self%left_node%sph_inv_mfp(sph_kernel,dust_prop,&
-            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp)
+            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h)
          call self%right_node%sph_inv_mfp(sph_kernel,dust_prop,&
-            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp)
+            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h)
          
       else
       
          ! calculate quantities from leaf
          do i=1,size(self%particle_array)
          
-            s=sqrt(sum((r-self%particle_array(i)%r)**2))*self%particle_array(i)%inv_h
+            s=norm2(r-self%particle_array(i)%r)*self%particle_array(i)%inv_h
             w=sph_kernel%w(s)*self%particle_array(i)%inv_h**(n_dim)
             grad_w=sph_kernel%dw_dr(s)*self%particle_array(i)%inv_h**(n_dim+2)*&
                &(r-self%particle_array(i)%r)/s
             
             lambda_ob=lambda_em*&
                &(dot_product(self%particle_array(i)%v-v_em,n_em)/c_light+1._rel_kind)
-            dust_mass_ext=dust_prop%dust_mass_ext(lambda_ob)
+            dust_mass_ext=dust_prop%dust_mass_ext(lambda_ob)*self%particle_array(i)%f_sub
             
-            inv_mfp=inv_mfp+self%particle_array(i)%f_sub*self%particle_array(i)%m*dust_mass_ext*w
-            grad_inv_mfp=self%particle_array(i)%f_sub*grad_inv_mfp+self%particle_array(i)%m*dust_mass_ext*grad_w
-              
+            inv_mfp=inv_mfp+self%particle_array(i)%m*dust_mass_ext*w
+            grad_inv_mfp=grad_inv_mfp+self%particle_array(i)%m*dust_mass_ext*grad_w
+            h=h+self%particle_array(i)%m*self%particle_array(i)%inv_rho*self%particle_array(i)%h*w
+            
          end do
       
       end if

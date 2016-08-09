@@ -21,6 +21,7 @@
 ! SOFTWARE.
 
 ! options module for simulation parameters
+! see Rotitaille 2010, A&A, 520, 70 for Modified Random Walk details
 module m_options
 
    use m_kind_parameters
@@ -41,6 +42,10 @@ module m_options
       integer(kind=int_kind) :: sim_n_it                                      ! number of iterations
       logical(kind=log_kind) :: sim_restart                                   ! restart sim? (don't use sim_initial_t)
       real(kind=rel_kind) :: sim_initial_t                                    ! initial background temperature
+      real(kind=rel_kind) :: sim_min_d                                        ! simulation minimum resolvable distance
+      logical(kind=log_kind) :: sim_mrw                                       ! use modified random walk for optically thick regions
+      real(kind=rel_kind) :: sim_mrw_gamma                                    ! mrw gamma variable
+      integer(kind=int_kind) :: sim_n_mrw                                     ! number of mrw lookup table points
       
       ! dust params
       real(kind=rel_kind) :: dust_t_min                                       ! minimum dust temperature
@@ -126,10 +131,15 @@ module m_options
       self%sim_n_it=5
       self%sim_restart=.false.
       self%sim_initial_t=10._rel_kind
+      self%sim_min_d=0._rel_kind
+      self%sim_mrw=.true.
+      self%sim_mrw_gamma=2._rel_kind
+      self%sim_n_mrw=1001
+      
       
       ! dust table parameters
-      self%dust_t_min=1.e+0_rel_kind
-      self%dust_t_max=1.e+4_rel_kind
+      self%dust_t_min=2.e+0_rel_kind
+      self%dust_t_max=2.e+4_rel_kind
       self%dust_n_t=801
       self%dust_r_v=5.5_rel_kind
       self%dust_iso_scatter=.true.
@@ -241,127 +251,139 @@ module m_options
                case ("sim_n_packet")
                   read(param_value,*) self%sim_n_packet
                   
-               case("sim_n_it")
+               case ("sim_n_it")
                   read(param_value,*) self%sim_n_it
                
-               case("sim_restart")
+               case ("sim_restart")
                   read(param_value,*) self%sim_restart
                   
-               case("sim_initial_t")
+               case ("sim_initial_t")
                   read(param_value,*) self%sim_initial_t
                   
-               case("dust_t_min")
+               case ("sim_min_d")
+                  read(param_value,*) self%sim_min_d
+                  
+               case ("sim_mrw")
+                  read(param_value,*) self%sim_mrw
+                  
+               case ("sim_mrw_gamma")
+                  read(param_value,*) self%sim_mrw_gamma
+                  
+               case ("sim_n_mrw")
+                  read(param_value,*) self%sim_n_mrw
+               
+               case ("dust_t_min")
                   read(param_value,*) self%dust_t_min
                   
-               case("dust_t_max")
+               case ("dust_t_max")
                   read(param_value,*) self%dust_t_max
                   
-               case("dust_r_v")
+               case ("dust_r_v")
                   read(param_value,*) self%dust_r_v
                
-               case("dust_iso_scatter")
+               case ("dust_iso_scatter")
                   read(param_value,*) self%dust_iso_scatter
                   
-               case("dust_sub_t_min")
+               case ("dust_sub_t_min")
                   read(param_value,*) self%dust_sub_t_min
                   
-               case("dust_sub_t_max")
+               case ("dust_sub_t_max")
                   read(param_value,*) self%dust_sub_t_max
                   
-               case("ext_rf")
+               case ("ext_rf")
                   read(param_value,*) self%ext_rf
                   
-               case("ext_rf_type")
+               case ("ext_rf_type")
                   self%ext_rf_type=param_value
                   
-               case("ext_rf_cmb")
+               case ("ext_rf_cmb")
                   read(param_value,*) self%ext_rf_cmb
                
-               case("ext_rf_gal_r")
+               case ("ext_rf_gal_r")
                   read(param_value,*) self%ext_rf_gal_r
                   
-               case("ext_rf_gal_z")
+               case ("ext_rf_gal_z")
                   read(param_value,*) self%ext_rf_gal_z
                   
-               case("ext_rf_t")
+               case ("ext_rf_t")
                   read(param_value,*) self%ext_rf_t
                   
-               case("ext_rf_d")
+               case ("ext_rf_d")
                   read(param_value,*) self%ext_rf_d
                   
-               case("ext_rf_lambda_min")
+               case ("ext_rf_lambda_min")
                   read(param_value,*) self%ext_rf_lambda_min
                   
-               case("ext_rf_lambda_max")
+               case ("ext_rf_lambda_max")
                   read(param_value,*) self%ext_rf_lambda_max
                   
-               case("ext_rf_n_lambda")
+               case ("ext_rf_n_lambda")
                   read(param_value,*) self%ext_rf_n_lambda
                                     
-               case("point_sources")
+               case ("point_sources")
                   read(param_value,*) self%point_sources
                
-               case("point_lambda_min")
+               case ("point_lambda_min")
                   read(param_value,*) self%point_lambda_min
                   
-               case("point_lambda_max")
+               case ("point_lambda_max")
                   read(param_value,*) self%point_lambda_max
                   
-               case("point_n_lambda")
+               case ("point_n_lambda")
                   read(param_value,*) self%point_n_lambda
                   
-               case("sph_kernel")
+               case ("sph_kernel")
                   self%sph_kernel=param_value
                   
-               case("sph_eta")
+               case ("sph_eta")
                   read(param_value,*) self%sph_eta
                   
-               case("sph_scattered_light")
+               case ("sph_scattered_light")
                   read(param_value,*) self%sph_scattered_light
                   
-               case("sph_lambda_min")
+               case ("sph_lambda_min")
                   read(param_value,*) self%sph_lambda_min
                   
-               case("sph_lambda_max")
+               case ("sph_lambda_max")
                   read(param_value,*) self%sph_lambda_max
                   
-               case("sph_n_lambda")
+               case ("sph_n_lambda")
                   read(param_value,*) self%sph_n_lambda
                
-               case("datacube_make")
+               case ("datacube_make")
                   read(param_value,*) self%datacube_make
                   
-               case("datacube_convolve")
+               case ("datacube_convolve")
                   read(param_value,*) self%datacube_convolve
                                   
-               case("datacube_lambda_string")
+               case ("datacube_lambda_string")
                   self%datacube_lambda_string=param_value
                   
-               case("datacube_fwhm_string")
+               case ("datacube_fwhm_string")
                   self%datacube_fwhm_string=param_value
                   
-               case("datacube_distance")
+               case ("datacube_distance")
                   read(param_value,*) self%datacube_distance
                   
-               case("datacube_x_min")
+               case ("datacube_x_min")
                   read(param_value,*) self%datacube_x_min
                   
-               case("datacube_x_max")
+               case ("datacube_x_max")
                   read(param_value,*) self%datacube_x_max
                   
-               case("datacube_y_min")
+               case ("datacube_y_min")
                   read(param_value,*) self%datacube_y_min
                   
-               case("datacube_y_max")
+               case ("datacube_y_max")
                   read(param_value,*) self%datacube_y_max
                   
-               case("datacube_angles")
+               case ("datacube_angles")
                   read(param_value,*) self%datacube_angles
                   
-               case("datacube_n_x")
+               case ("datacube_n_x")
                   read(param_value,*) self%datacube_n_x
                   
-               case("datacube_n_y")
+               case ("datacube_n_y")
                   read(param_value,*) self%datacube_n_y
                   
                case default

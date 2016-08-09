@@ -116,13 +116,13 @@ module m_particle
       ! argument declarations
       class(particle),intent(inout) :: self  ! particle object
       
-      self%a_dot=self%a_dot_new/(self%m*self%f_sub)
+      self%a_dot=self%a_dot_new/self%m
       self%a_dot_new=0._rel_kind
       
       if (associated(self%a_dot_scatter_array)) then
       
          self%a_dot_scatter_array=self%a_dot_scatter_array/&
-            &((self%lambda_array(2:)-self%lambda_array(:size(self%lambda_array)-1))*self%m*self%f_sub)
+            &((self%lambda_array(2:)-self%lambda_array(:size(self%lambda_array)-1))*self%m)
       
       end if
       

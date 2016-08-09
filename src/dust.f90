@@ -39,17 +39,33 @@ module m_dust
    ! define dust class
    type,abstract :: dust
    
-      real(kind=rel_kind),allocatable :: temperature_array(:)           ! array of temperatures
-      real(kind=rel_kind),allocatable :: wavelength_array(:)            ! array of wavelength
-      real(kind=rel_kind),allocatable :: dust_mass_ext_array(:)         ! dust mass extinction as function of lambda
-      real(kind=rel_kind),allocatable :: albedo_array(:)                ! albedo as function of lambda
-      real(kind=rel_kind),allocatable :: mean_cos_theta_array(:)        ! mean scattering cosine
-      real(kind=rel_kind),allocatable :: mono_mass_emissivity_array(:,:)! monochromatic luminosity per unit dust mass
-      real(kind=rel_kind),allocatable :: cum_mono_mass_emissivity(:,:)  ! cumulatve mono_mass_emissivity along lambda
-      real(kind=rel_kind),allocatable :: norm_mono_mass_emissivity(:,:) ! normalised mono_mass_emissivity along lambda
-      real(kind=rel_kind),allocatable :: bol_mass_emissivity_array(:)   ! luminosity per unit dust mass
+      ! standard dust variables
+   
+      real(kind=rel_kind),allocatable :: temperature_array(:)              ! array of temperatures
+      real(kind=rel_kind),allocatable :: wavelength_array(:)               ! array of wavelength
+      real(kind=rel_kind),allocatable :: dust_mass_ext_array(:)            ! dust mass extinction as function of lambda
+      real(kind=rel_kind),allocatable :: albedo_array(:)                   ! albedo as function of lambda
+      real(kind=rel_kind),allocatable :: mean_cos_theta_array(:)           ! mean scattering cosine
+      real(kind=rel_kind),allocatable :: mono_mass_emissivity_array(:,:)   ! monochromatic luminosity per unit dust mass
+      real(kind=rel_kind),allocatable :: cum_mono_mass_emissivity(:,:)     ! cumulative mono_mass_emissivity along lambda
+      real(kind=rel_kind),allocatable :: norm_mono_mass_emissivity(:,:)    ! normalised mono_mass_emissivity along lambda
+      real(kind=rel_kind),allocatable :: bol_mass_emissivity_array(:)      ! luminosity per unit dust mass
       
+      ! Modified Random Walk variables
+      
+      real(kind=rel_kind),allocatable :: mrw_zeta_array(:)                 ! mrw zeta parameter
+      real(kind=rel_kind),allocatable :: mrw_y_array(:)                    ! mrw y parameter
+      real(kind=rel_kind),allocatable :: mrw_planck_abs_array(:)           ! planck absorption coefficient
+      real(kind=rel_kind),allocatable :: mrw_inv_planck_ext_array(:)       ! inverse planck extinction coefficient
+      real(kind=rel_kind),allocatable :: mrw_planck_sca_array(:,:)         ! planck scattering coefficient (definite integral)
+      real(kind=rel_kind),allocatable :: mrw_planck_function_array(:,:)    ! planck function
+      real(kind=rel_kind),allocatable :: mrw_bol_planck_function_array(:)  ! integrated planck function
+      real(kind=rel_kind),allocatable :: mrw_cum_planck_function(:,:)      ! cumulative planck function
+      real(kind=rel_kind),allocatable :: mrw_norm_planck_function(:,:)     ! normalised planck function
+            
       contains
+      
+      ! standard dust procedures
       
       procedure(initialise_virtual),deferred :: initialise
       procedure,non_overridable :: destroy
@@ -65,6 +81,16 @@ module m_dust
       procedure,non_overridable :: random_scatter_cosine
       procedure,non_overridable,nopass :: random_emission_direction
       procedure,non_overridable :: random_scatter_direction
+      
+      ! Modified Random Walk procedures
+      
+      procedure,non_overridable :: mrw_initialise
+      procedure,non_overridable :: mrw_random_wavelength
+      procedure,non_overridable :: mrw_planck_abs
+      procedure,non_overridable :: mrw_inv_planck_ext
+      procedure,non_overridable :: mrw_planck_sca
+      procedure,non_overridable :: mrw_distance
+      procedure,non_overridable,nopass :: mrw_random_direction
    
    end type
 
@@ -102,6 +128,15 @@ module m_dust
       deallocate(self%cum_mono_mass_emissivity)
       deallocate(self%norm_mono_mass_emissivity)
       deallocate(self%bol_mass_emissivity_array)
+      if (allocated(self%mrw_zeta_array)) deallocate(self%mrw_zeta_array)
+      if (allocated(self%mrw_y_array)) deallocate(self%mrw_y_array)
+      if (allocated(self%mrw_planck_abs_array)) deallocate(self%mrw_planck_abs_array)
+      if (allocated(self%mrw_inv_planck_ext_array)) deallocate(self%mrw_inv_planck_ext_array)
+      if (allocated(self%mrw_planck_sca_array)) deallocate(self%mrw_planck_sca_array)
+      if (allocated(self%mrw_planck_function_array)) deallocate(self%mrw_planck_function_array)
+      if (allocated(self%mrw_bol_planck_function_array)) deallocate(self%mrw_bol_planck_function_array)
+      if (allocated(self%mrw_cum_planck_function)) deallocate(self%mrw_cum_planck_function)
+      if (allocated(self%mrw_norm_planck_function)) deallocate(self%mrw_norm_planck_function)
 
       return
    
@@ -357,6 +392,220 @@ module m_dust
       
       ! get a random cos theta from phase function
       cos_theta=self%random_scatter_cosine(lambda)
+
+      call scattered_direction_3d(new_direction,old_direction,cos_theta)
+      
+      return
+   
+   end function
+   
+   ! initialise Modified Random Walk arrays
+   subroutine mrw_initialise(self,n_mrw)
+   
+      ! argument declarations
+      class(dust),intent(inout) :: self                        ! dust object
+      integer(kind=int_kind),intent(in) :: n_mrw               ! number of sample points
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i,j                            ! counter
+      real(kind=rel_kind) :: temp_cum_planck_array(size(self%wavelength_array))  ! temporary array
+      
+      ! allocate arrays
+      allocate(self%mrw_zeta_array(n_mrw))
+      allocate(self%mrw_y_array(n_mrw))
+      allocate(self%mrw_planck_abs_array(size(self%temperature_array)))
+      allocate(self%mrw_inv_planck_ext_array(size(self%temperature_array)))
+      allocate(self%mrw_planck_sca_array(size(self%wavelength_array),size(self%temperature_array)))
+      allocate(self%mrw_planck_function_array(size(self%wavelength_array),size(self%temperature_array)))
+      allocate(self%mrw_bol_planck_function_array(size(self%temperature_array)))
+      allocate(self%mrw_cum_planck_function(size(self%wavelength_array),size(self%temperature_array)))
+      allocate(self%mrw_norm_planck_function(size(self%wavelength_array),size(self%temperature_array)))
+            
+      ! create y and zeta array
+      self%mrw_y_array=lin_space(0._rel_kind,1._rel_kind,n_mrw)
+      self%mrw_zeta_array(1)=0._rel_kind
+      
+      do i=2,n_mrw
+         
+         ! perform sum
+         self%mrw_zeta_array(i)=0._rel_kind
+         do j=1,digits(0._rel_kind)-1
+            self%mrw_zeta_array(i)=self%mrw_zeta_array(i)+(-1._rel_kind)**(j+1)*self%mrw_y_array(i)**(j**2)
+         end do
+         
+         ! average of odd and even sum
+         self%mrw_zeta_array(i)=min(2._rel_kind*self%mrw_zeta_array(i)+&
+            &(-1._rel_kind)**(digits(0._rel_kind)+1)*self%mrw_y_array(i)**(digits(0._rel_kind)**2),1._rel_kind)
+            
+         ! ensure values are monotonic
+         self%mrw_zeta_array(i)=max(self%mrw_zeta_array(i),self%mrw_zeta_array(i-1))
+         
+      end do
+      
+      ! create remaining arrays
+      do i=1,size(self%temperature_array)
+      
+         ! planck function
+         self%mrw_planck_function_array(:,i)=planck_lambda(self%wavelength_array,self%temperature_array(i))
+         self%mrw_bol_planck_function_array(i)=trapz_intgr(self%wavelength_array,self%mrw_planck_function_array(:,i))
+         self%mrw_cum_planck_function(:,i)=cum_dist_func(self%wavelength_array,self%mrw_planck_function_array(:,i))
+         self%mrw_norm_planck_function(:,i)=self%mrw_planck_function_array(:,i)/self%mrw_bol_planck_function_array(i)
+         
+         ! planck abs/ext/sca
+         self%mrw_planck_abs_array=trapz_intgr(self%wavelength_array,self%dust_mass_ext_array*(1._rel_kind-self%albedo_array)*&
+            &self%mrw_planck_function_array(:,i))/self%mrw_bol_planck_function_array(i)
+         
+         self%mrw_inv_planck_ext_array=self%mrw_bol_planck_function_array(i)/&
+            &trapz_intgr(self%wavelength_array,(1._rel_kind/self%dust_mass_ext_array)*self%mrw_planck_function_array(:,i))
+         
+         ! make sure there are no NaNs in mrw_planck_sca_array
+         temp_cum_planck_array=cum_dist_func(self%wavelength_array,self%mrw_planck_function_array(:,i),.false._log_kind)
+         self%mrw_planck_sca_array(:,i)=merge(cum_dist_func(self%wavelength_array,self%dust_mass_ext_array*self%albedo_array*&
+            &self%mrw_planck_function_array(:,i),.false._log_kind)/temp_cum_planck_array,&
+            &0._rel_kind,temp_cum_planck_array>0._rel_kind)
+         
+      end do
+      
+      return
+   
+   end subroutine
+   
+   ! sample random wavelength from planck function
+   function mrw_random_wavelength(self,abs_rate) result (lambda)
+   
+      ! argument declarations
+      class(dust),intent(in) :: self                          ! dust object
+      real(kind=rel_kind),intent(in) :: abs_rate              ! energy absorption rate
+      
+      ! result declaration
+      real(kind=rel_kind) :: lambda                           ! wavelength (micron)
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i_0                           ! interpolation index
+      real(kind=rel_kind) :: r_num                            ! random number
+      real(kind=rel_kind) :: temp_abs_rate                    ! temporary energy absorption rate
+      real(kind=rel_kind) :: temp_norm_emissivity_array(size(self%wavelength_array))
+      real(kind=rel_kind) :: temp_cum_emissivity_array(size(self%wavelength_array))
+      
+      ! enforce that abs_rate/4pi is in range of bol_mass_emissivity_array
+      temp_abs_rate=max(min(abs_rate*0.25_rel_kind/pi,&
+         &self%bol_mass_emissivity_array(size(self%bol_mass_emissivity_array))),&
+         &self%bol_mass_emissivity_array(1))
+      
+      ! find temperature indices
+      i_0=binary_search(temp_abs_rate,self%bol_mass_emissivity_array)
+      
+      
+      temp_norm_emissivity_array=lerp(temp_abs_rate,&
+         &self%bol_mass_emissivity_array(i_0),self%bol_mass_emissivity_array(i_0+1),&
+         &self%mrw_norm_planck_function(:,i_0),self%mrw_norm_planck_function(:,i_0+1))   
+      temp_cum_emissivity_array=lerp(temp_abs_rate,&
+         &self%bol_mass_emissivity_array(i_0),self%bol_mass_emissivity_array(i_0+1),&
+         &self%mrw_cum_planck_function(:,i_0),self%mrw_cum_planck_function(:,i_0+1))
+      
+      ! get random wavelength for t_0 and t_1
+      call random_number(r_num)
+      lambda=lookup_and_inv_interpolate(r_num,temp_cum_emissivity_array,&
+         &self%wavelength_array,temp_norm_emissivity_array)
+         
+      return
+   
+   end function
+   
+   ! get planck absorption coefficient
+   elemental function mrw_planck_abs(self,abs_rate) result (planck_abs)
+   
+      ! argument declarations
+      class(dust),intent(in) :: self                          ! dust object
+      real(kind=rel_kind),intent(in) :: abs_rate              ! energy absorption rate
+      
+      ! result declaration
+      real(kind=rel_kind) :: planck_abs                       ! planck absorption coefficient
+         
+      planck_abs=lookup_and_interpolate(abs_rate,self%bol_mass_emissivity_array,self%mrw_planck_abs_array)
+      
+      return
+   
+   end function
+   
+   ! get inverse planck extinction coefficient
+   elemental function mrw_inv_planck_ext(self,abs_rate) result (inv_planck_ext)
+   
+      ! argument declarations
+      class(dust),intent(in) :: self                          ! dust object
+      real(kind=rel_kind),intent(in) :: abs_rate              ! energy absorption rate
+      
+      ! result declaration
+      real(kind=rel_kind) :: inv_planck_ext                   ! inverse planck extinction coefficient
+         
+      inv_planck_ext=lookup_and_interpolate(abs_rate,self%bol_mass_emissivity_array,self%mrw_inv_planck_ext_array)
+      
+      return
+   
+   end function
+   
+   ! get planck scattering coefficient between wavelengths
+   elemental function mrw_planck_sca(self,abs_rate,wavelength_0,wavelength_1) result (planck_sca)
+   
+      ! argument declarations
+      class(dust),intent(in) :: self                        ! dust object
+      real(kind=rel_kind),intent(in) :: abs_rate            ! energy absorption
+      real(kind=rel_kind),intent(in) :: wavelength_0        ! wavelength lower bound
+      real(kind=rel_kind),intent(in) :: wavelength_1        ! wavelength upper bound
+      
+      ! result declaration
+      real(kind=rel_kind) :: planck_sca                     ! planck scattering coefficient
+      
+      planck_sca=lookup_and_interpolate(wavelength_1,abs_rate*0.25_rel_kind/pi,&
+         &self%wavelength_array,self%bol_mass_emissivity_array,self%mrw_planck_sca_array)-&
+         &lookup_and_interpolate(wavelength_0,abs_rate*0.25_rel_kind/pi,&
+         &self%wavelength_array,self%bol_mass_emissivity_array,self%mrw_planck_sca_array)
+         
+      return
+      
+   end function
+   
+   ! get mrw distance travelled through optically thick isothermal sphere
+   function mrw_distance(self,abs_rate,radius,density) result (distance)
+   
+      ! argument declarations
+      class(dust),intent(in) :: self                        ! dust object
+      real(kind=rel_kind),intent(in) :: abs_rate            ! energy absorption
+      real(kind=rel_kind),intent(in) :: radius              ! radius of isothermal sphere
+      real(kind=rel_kind),intent(in) :: density             ! density of isothermal sphere
+      
+      ! result declaration
+      real(kind=rel_kind) :: distance                       ! distance travelled by luminosity packet
+      
+      ! variable declarations
+      real(kind=rel_kind) :: r_num                          ! random number
+      
+      ! get random number
+      call random_number(r_num)
+      
+      ! calculate distance travelled through isothermal sphere
+      distance=-log(lookup_and_interpolate(r_num,self%mrw_zeta_array,self%mrw_y_array))*(radius/pi)**2*&
+         &3._rel_kind*density*self%mrw_inv_planck_ext(abs_rate)
+      
+      return
+   
+   end function
+   
+   ! gives the direction of a ray after emerging from isothermal sphere
+   function mrw_random_direction(old_direction) result (new_direction)
+   
+      ! argument declarations
+      real(kind=rel_kind),intent(in) :: old_direction(n_dim)  ! direction before scatter event
+      
+      ! result declaration
+      real(kind=rel_kind) :: new_direction(n_dim)             ! direction after scattering event
+      
+      ! variable declarations
+      real(kind=rel_kind) :: cos_theta                        ! scattering angles
+      
+      ! cos theta from lambertian surface
+      call random_number(cos_theta)
+      cos_theta=sqrt(cos_theta)
 
       call scattered_direction_3d(new_direction,old_direction,cos_theta)
       

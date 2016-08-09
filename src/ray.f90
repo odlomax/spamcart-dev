@@ -89,17 +89,19 @@ module m_ray
       procedure,non_overridable :: ray_trace_initialise
       procedure,non_overridable :: ray_trace_i
       procedure,non_overridable :: ray_trace_tau
-      procedure,non_overridable :: v_sph
-      procedure,non_overridable :: a_dot_sph
-      procedure,non_overridable :: a_sph
-      procedure,non_overridable :: tau_sph
-      procedure,non_overridable :: inv_mfp
-      procedure,non_overridable :: grad_inv_mfp
+      procedure,non_overridable,private :: v_sph
+      procedure,non_overridable,private :: a_dot_sph
+      procedure,non_overridable,private :: a_sph
+      procedure,non_overridable,private :: tau_sph
+      procedure,non_overridable,private :: inv_mfp
+      procedure,non_overridable,private :: grad_inv_mfp
       procedure,non_overridable,private :: find_particles
       procedure,non_overridable,private :: stock_geometric
       procedure,non_overridable,private :: stock_optical
       procedure,non_overridable,private :: stock_sigma
       procedure,non_overridable,private :: update_absorption_rate
+      procedure,non_overridable,private :: mrw_check
+      procedure,non_overridable,private :: h_0
 
    end type
    
@@ -163,7 +165,7 @@ module m_ray
    end subroutine
    
    ! follow a luminosity packet
-   subroutine follow(self,origin_in,direction_in,v_em_in,lambda_em_in,l_chunk)
+   subroutine follow(self,origin_in,direction_in,v_em_in,lambda_em_in,l_chunk,use_mrw,mrw_gamma)
    
       ! argument declarations
       class(ray),intent(inout) :: self                  ! ray object
@@ -172,8 +174,11 @@ module m_ray
       real(kind=rel_kind),intent(in) :: v_em_in(n_dim)  ! velocity of emitter
       real(kind=rel_kind),intent(in) :: lambda_em_in    ! emission wavelength
       real(kind=rel_kind),intent(in) :: l_chunk         ! chunk of luminosity
+      logical(kind=log_kind),intent(in) :: use_mrw      ! use modified random walk
+      real(kind=rel_kind),intent(in) :: mrw_gamma       ! mrw gamma parameter
       
       ! variable declarations
+      integer(kind=int_kind) :: i,j                     ! counter
       real(kind=rel_kind) :: origin(n_dim)              ! origin of ray
       real(kind=rel_kind) :: direction(n_dim)           ! direction of ray
       real(kind=rel_kind) :: new_direction(n_dim)       ! new direction of ray
@@ -195,6 +200,14 @@ module m_ray
       real(kind=rel_kind) :: d2tau_dl2                  ! iteration second derivative
       real(kind=rel_kind) :: uni_r                      ! uniform random number
       real(kind=rel_kind) :: lambda_ob                  ! rest frame wavelength
+      real(kind=rel_kind) :: h                          ! smoothing length
+      logical(kind=log_kind) :: extend_ray              ! are we extending a ray?
+      logical(kind=log_kind) :: short_ray               ! is ray shorter than sim resolution?
+      real(kind=rel_kind) :: ave_a_dot                  ! ray-averaged a_dot
+      real(kind=rel_kind) :: ave_rho                    ! ray-averaged density
+      real(kind=rel_kind) :: mrw_distance               ! distance travelled along modified random walk
+      real(kind=rel_kind) :: planck_abs                 ! planck mean absorption
+      real(kind=rel_kind) :: planck_sca                 ! planck mean scatter
       
       ! set input variables
       origin=origin_in
@@ -207,11 +220,14 @@ module m_ray
       self%lambda_em=lambda_em
       self%v_em=v_em
       
+      extend_ray=.false.
+      
       ! calculate inv_mfp and grad_inv_mfp from tree
       inv_mfp=0._rel_kind
       grad_inv_mfp=0._rel_kind
+      h=0._rel_kind
       call self%root_node%sph_inv_mfp(self%sph_kernel,self%dust_prop,&
-         &origin,lambda_em,direction,v_em,inv_mfp,grad_inv_mfp)
+         &origin,lambda_em,direction,v_em,inv_mfp,grad_inv_mfp,h)
          
       call random_number(tau)
       tau=-log(tau)
@@ -222,12 +238,16 @@ module m_ray
       do
       
          ! estimate length from local quantities
-         length=min(max(2._rel_kind*ray_eta*tau/&
-            &(inv_mfp+sqrt(max(inv_mfp**2+2._rel_kind*tau*&
-            &dot_product(grad_inv_mfp,direction),0._rel_kind))),&
-            &self%min_length),self%max_length)
+         length=min(2._rel_kind*ray_eta*tau/&
+            &(inv_mfp+sqrt(max(inv_mfp**2+2._rel_kind*tau*dot_product(grad_inv_mfp,direction),0._rel_kind))),self%max_length)
 
-         
+         ! adjust length if it's too short
+         if (length<max(self%min_length,h)) then
+            short_ray=.true.
+            length=max(length,self%min_length,h)
+         else
+            short_ray=.false.
+         end if 
          
          ! initialise path
          call self%path%initialise(origin,direction,length)
@@ -246,6 +266,63 @@ module m_ray
          call self%stock_sigma()
          call self%stock_optical()
          
+         ! check to see if we need to perform modified random walk
+         
+         if (short_ray.and.use_mrw.and.(.not.extend_ray)) then
+         
+            ! check if mean free path is less then gamma * h
+            if (self%mrw_check(mrw_gamma)) then
+            
+            ! perform modified random walk
+            ave_a_dot=sum(self%item(:self%n_item)%a_dot*self%item(:self%n_item)%sigma)/sum(self%item(:self%n_item)%sigma)
+            ave_rho=sum(self%item(:self%n_item)%sigma)/self%path%length
+            
+            ! calculate mrw variables
+            mrw_distance=self%dust_prop%mrw_distance(ave_a_dot,self%path%length,ave_rho)
+            planck_abs=self%dust_prop%mrw_planck_abs(ave_a_dot)
+            
+            ! update particle absorption rates
+            do i=1,self%n_item
+            
+               call atomic_real_add(self%item(i)%particle_ptr%a_dot,&
+                  mrw_distance*self%item(i)%sigma*planck_abs/self%path%length)
+            
+               ! check if scattered light array exists
+               if (associated(self%item(i)%particle_ptr%a_dot_scatter_array)) then
+               
+                  do j=1,size(self%item(i)%particle_ptr%a_dot_scatter_array)
+                  
+                     planck_sca=self%dust_prop%mrw_planck_sca(ave_a_dot,&
+                        &self%item(i)%particle_ptr%lambda_array(j),self%item(i)%particle_ptr%lambda_array(j+1))
+                        
+                     call atomic_real_add(self%item(i)%particle_ptr%a_dot_scatter_array(j),&
+                        &mrw_distance*self%item(i)%sigma*planck_sca/self%path%length)
+                  
+                  end do
+               
+               end if
+            
+            end do
+            
+            ! set new position, direction, wavelength
+            origin=origin+self%path%direction*self%path%length
+            direction=self%dust_prop%mrw_random_direction(direction)
+            self%lambda_em=self%dust_prop%mrw_random_wavelength(ave_a_dot)
+            self%v_em=self%v_sph()
+            
+            ! restock optical properties
+            call self%stock_optical()
+            inv_mfp=self%inv_mfp()
+            grad_inv_mfp=self%grad_inv_mfp()
+            h=self%h_0()
+            
+            ! skip to next loop iteration
+            cycle
+         
+            end if
+         
+         end if 
+         
          tau_est=self%tau_sph()
             
          ! was initial length estimate too short?
@@ -256,8 +333,11 @@ module m_ray
             tau=tau-tau_est
             origin=origin+direction*length
             call self%update_absorption_rate()
+            extend_ray=.true.
          
          else
+         
+            extend_ray=.false.
          
             ! perform Newton Raphson iterations until length has converged
             
@@ -345,6 +425,7 @@ module m_ray
          ! set new inv_mfp and grad_inv_mfp
          inv_mfp=self%inv_mfp()
          grad_inv_mfp=self%grad_inv_mfp()
+         h=self%h_0()
          
 !          write(*,*) "wavelength", self%lambda_em
 !          write(*,*) "items on ray",self%n_item
@@ -591,6 +672,9 @@ module m_ray
             &(dot_product(self%item(i)%v-self%v_em,self%path%direction)/c_light+1._rel_kind)
          call self%dust_prop%dust_mass_ext_and_albedo(self%item(i)%lambda_ob,self%item(i)%kappa_ext,self%item(i)%a)
          
+         ! adjust extinction by f_sub
+         self%item(i)%kappa_ext=self%item(i)%kappa_ext*self%item(i)%f_sub
+         
       end do
       
       return
@@ -620,9 +704,8 @@ module m_ray
          ! calculate column density
          sigma_0=self%sph_kernel%sigma(self%item(i)%b,self%item(i)%s_0)
          sigma_1=self%sph_kernel%sigma(self%item(i)%b,self%item(i)%s_1)
-         self%item(i)%sigma=&
-            self%item(i)%f_sub*self%item(i)%m*self%item(i)%inv_h**(n_dim-1)*&
-            merge(sigma_0+sigma_1,abs(sigma_0-sigma_1),&
+         self%item(i)%sigma=self%item(i)%m*self%item(i)%inv_h**(n_dim-1)*&
+            &merge(sigma_0+sigma_1,abs(sigma_0-sigma_1),&
             &self%item(i)%t_r>0._rel_kind.and.self%item(i)%t_r<self%path%length)
       
       end do
@@ -758,8 +841,7 @@ module m_ray
       ! result declaration
       real(kind=rel_kind) :: inv_mfp_value              ! inv_mfp at path%length
       
-      inv_mfp_value=sum(self%item(:self%n_item)%f_sub*&
-         &self%item(:self%n_item)%m*&
+      inv_mfp_value=sum(self%item(:self%n_item)%m*&
          &self%item(:self%n_item)%inv_h**(n_dim)*&
          &self%item(:self%n_item)%kappa_ext*&
          &self%sph_kernel%w(self%item(:self%n_item)%s_1))
@@ -782,7 +864,7 @@ module m_ray
       grad_inv_mfp_value=0._rel_kind
       do i=1,self%n_item
       
-         grad_inv_mfp_value=grad_inv_mfp_value+self%item(i)%f_sub*self%item(i)%m*&
+         grad_inv_mfp_value=grad_inv_mfp_value+self%item(i)%m*&
             &self%item(i)%inv_h**(n_dim+2)*&
             &self%item(i)%kappa_ext*&
             &self%sph_kernel%dw_dr(self%item(i)%s_1)*&
@@ -792,6 +874,45 @@ module m_ray
       
       return
    
+   end function
+   
+   ! check if we need to perform modified random walk
+   pure function mrw_check(self,gamma) result (use_mrw)
+   
+      ! argument declarations
+      class(ray),intent(in) :: self                     ! ray object
+      real(kind=rel_kind),intent(in) :: gamma           ! min number of mean free paths for mrw
+      
+      ! result declaration
+      logical(kind=log_kind) :: use_mrw                 ! use modified random walk
+      
+      ! variable declarations
+      real(kind=rel_kind) :: inv_mfp                    ! planck average inv_mfp at origin
+      
+      ! calculate inverse mean free path
+      inv_mfp=sum(self%item(:self%n_item)%m*self%item(:self%n_item)%inv_h**n_dim*self%sph_kernel%w(self%item(:self%n_item)%s_0)*&
+         &self%item(:self%n_item)%f_sub*self%dust_prop%mrw_inv_planck_ext(self%item(:self%n_item)%a_dot))
+         
+      use_mrw=(self%path%length>gamma*inv_mfp)
+         
+      return
+   
+   end function 
+   
+   ! get smoothing length at origin
+   pure function h_0(self) result (h)
+   
+      ! argument declarations
+      class(ray),intent(in) :: self                      ! ray object
+      
+      ! result declaration
+      real(kind=rel_kind) :: h                           ! smoothing length
+      
+      h=sum(self%item(:self%n_item)%m*self%item(:self%n_item)%inv_h**(n_dim-1)*self%item(:self%n_item)%inv_rho*&
+         &self%sph_kernel%w(self%item(:self%n_item)%s_0))
+      
+      return
+         
    end function
    
    ! sort ray items in order of position along ray

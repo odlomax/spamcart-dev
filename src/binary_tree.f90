@@ -57,13 +57,14 @@ module m_binary_tree
    contains
    
    ! initialise binary tree
-   subroutine initialise(self,particle_array,sph_kernel,eta)
+   subroutine initialise(self,particle_array,sph_kernel,eta,min_d)
    
       ! argument declarations
       class(binary_tree),intent(inout) :: self                  ! binary tree object
       type(particle),intent(inout),target :: particle_array(:)  ! array of particles
       class(kernel),intent(inout),target :: sph_kernel          ! sph kernel
       real(kind=rel_kind),intent(in) :: eta                     ! smoothing length scale factor
+      real(kind=rel_kind),intent(in) :: min_d                   ! minimum resolvable distance in simulation
       
       ! variable declarations
       integer(kind=int_kind) :: i                               ! counter
@@ -103,7 +104,7 @@ module m_binary_tree
          self%max_length=max((norm2(self%particle_array(i)%r-self%com)+self%particle_array(i)%h),self%max_length)
       end do
       self%max_length=self%max_length*2._rel_kind
-      self%min_length=minval(self%particle_array%h)
+      self%min_length=max(minval(self%particle_array%h),min_d)
       
       return
    
