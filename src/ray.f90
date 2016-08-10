@@ -257,6 +257,8 @@ module m_ray
             ! check if mean free path is less then gamma * h
             if (length*ave_inv_mfp>mrw_gamma) then
             
+               ! perform modified random walk
+            
                ! set new isotropic direction
                direction=self%dust_prop%random_emission_direction()
                
@@ -271,12 +273,12 @@ module m_ray
                call self%stock_geometric()
                call self%stock_sigma()
                
-            
-               ! perform modified random walk
                ave_a_dot=sum(self%item(:self%n_item)%a_dot*self%item(:self%n_item)%sigma)/sum(self%item(:self%n_item)%sigma)
                ave_rho=sum(self%item(:self%n_item)%sigma)/self%path%length
             
                ! calculate mrw variables
+               ave_a_dot=sum(self%item(:self%n_item)%a_dot*self%item(:self%n_item)%sigma)/sum(self%item(:self%n_item)%sigma)
+               ave_rho=sum(self%item(:self%n_item)%sigma)/self%path%length
                mrw_distance=self%dust_prop%mrw_distance(ave_a_dot,self%path%length,ave_rho)
                planck_abs=self%dust_prop%mrw_planck_abs(ave_a_dot)
             

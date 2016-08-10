@@ -518,7 +518,7 @@ module m_dust
       ! result declaration
       real(kind=rel_kind) :: planck_abs                       ! planck absorption coefficient
          
-      planck_abs=lookup_and_interpolate(abs_rate,self%bol_mass_emissivity_array,self%mrw_planck_abs_array)
+      planck_abs=lookup_and_interpolate(abs_rate*0.25_rel_kind/pi,self%bol_mass_emissivity_array,self%mrw_planck_abs_array)
       
       return
    
@@ -534,7 +534,7 @@ module m_dust
       ! result declaration
       real(kind=rel_kind) :: inv_planck_ext                   ! inverse planck extinction coefficient
          
-      inv_planck_ext=lookup_and_interpolate(abs_rate,self%bol_mass_emissivity_array,self%mrw_inv_planck_ext_array)
+      inv_planck_ext=lookup_and_interpolate(abs_rate*0.25_rel_kind/pi,self%bol_mass_emissivity_array,self%mrw_inv_planck_ext_array)
       
       return
    
