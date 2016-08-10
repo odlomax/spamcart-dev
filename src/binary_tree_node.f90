@@ -254,7 +254,7 @@ module m_binary_tree_node
    
    ! calculate the inverse mean free path, and its gradient
    pure recursive subroutine sph_inv_mfp(self,sph_kernel,dust_prop,&
-      &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h)
+      &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h,ave_inv_mfp)
    
       ! argument declarations
       class(binary_tree_node),intent(in) :: self                ! binary tree node object
@@ -267,6 +267,7 @@ module m_binary_tree_node
       real(kind=rel_kind),intent(inout) :: inv_mfp              ! inverse mean free path
       real(kind=rel_kind),intent(inout) :: grad_inv_mfp(n_dim)  ! gradient of inverse mean free path
       real(kind=rel_kind),intent(inout) :: h                    ! smoothing length
+      real(kind=rel_kind),intent(inout) :: ave_inv_mfp          ! planck averaged mean free path
        
       ! variable declarations
       integer(kind=int_kind) :: i                               ! counter
@@ -283,9 +284,9 @@ module m_binary_tree_node
       
          ! recurse down tree
          call self%left_node%sph_inv_mfp(sph_kernel,dust_prop,&
-            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h)
+            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h,ave_inv_mfp)
          call self%right_node%sph_inv_mfp(sph_kernel,dust_prop,&
-            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h)
+            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h,ave_inv_mfp)
          
       else
       
@@ -304,6 +305,7 @@ module m_binary_tree_node
             inv_mfp=inv_mfp+self%particle_array(i)%m*dust_mass_ext*w
             grad_inv_mfp=grad_inv_mfp+self%particle_array(i)%m*dust_mass_ext*grad_w
             h=h+self%particle_array(i)%m*self%particle_array(i)%inv_rho*self%particle_array(i)%h*w
+            ave_inv_mfp=ave_inv_mfp+self%particle_array(i)%m*dust_prop%mrw_inv_planck_ext(self%particle_array(i)%a_dot)*w
             
          end do
       

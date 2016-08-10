@@ -107,8 +107,8 @@ module m_simulation
       write(*,"(A)") "read in particles"
       call read_in_sph_particles_3d(position,mass,temperature,self%sim_params%sim_cloud_file)
       if (.not.self%sim_params%sim_restart) temperature=self%sim_params%sim_initial_t
-      allocate(self%particle_array(size(position,2)))
       
+      allocate(self%particle_array(size(position,2)))
       write(*,"(A)") "initialise particles"
       do i=1,size(self%particle_array)
          if (self%sim_params%sph_scattered_light) then
@@ -227,6 +227,8 @@ module m_simulation
       ! get number of threads
       n_threads=omp_get_num_procs()
       
+      n_threads=1
+      
       ! initialise luminosity packets (one per thread)
       write(*,"(A)") "initialise luminosity packets"
       allocate(self%lum_packet_array(n_threads))
@@ -307,7 +309,7 @@ module m_simulation
          position_array(:,i)=self%particle_array(i)%r
       end do
       call write_out_sph_particles_3d(position_array,self%particle_array%m,&
-         &self%dust_prop%dust_temperature(self%particle_array%a_dot),self%particle_array%rho,self%particle_array%f_sub,output_file)
+         &self%dust_prop%dust_temperature(self%particle_array%a_dot),self%particle_array%rho,self%particle_array%h,output_file)
       
       ! deallocate luminosity packets
       call self%lum_packet_array%destroy()
