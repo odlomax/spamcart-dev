@@ -285,7 +285,7 @@ module m_ray
                ! update particle absorption rates
                do i=1,self%n_item
             
-                  call atomic_real_add(self%item(i)%particle_ptr%a_dot,&
+                  call atomic_real_add(self%item(i)%particle_ptr%a_dot_new,&
                      mrw_distance*self%item(i)%sigma*planck_abs/self%path%length)
             
                   ! check if scattered light array exists
@@ -420,7 +420,6 @@ module m_ray
                new_direction=self%dust_prop%random_scatter_direction(direction,lambda_ob)
                lambda_em=lambda_ob
                
-            
             else
             
                ! packet is absorbed and re-emitted

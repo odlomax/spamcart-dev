@@ -451,10 +451,10 @@ module m_dust
          self%mrw_norm_planck_function(:,i)=self%mrw_planck_function_array(:,i)/self%mrw_bol_planck_function_array(i)
          
          ! planck abs/ext/sca
-         self%mrw_planck_abs_array=trapz_intgr(self%wavelength_array,self%dust_mass_ext_array*(1._rel_kind-self%albedo_array)*&
+         self%mrw_planck_abs_array(i)=trapz_intgr(self%wavelength_array,self%dust_mass_ext_array*(1._rel_kind-self%albedo_array)*&
             &self%mrw_planck_function_array(:,i))/self%mrw_bol_planck_function_array(i)
          
-         self%mrw_inv_planck_ext_array=self%mrw_bol_planck_function_array(i)/&
+         self%mrw_inv_planck_ext_array(i)=self%mrw_bol_planck_function_array(i)/&
             &trapz_intgr(self%wavelength_array,(1._rel_kind/self%dust_mass_ext_array)*self%mrw_planck_function_array(:,i))
          
          self%mrw_planck_sca_array(:,i)=cum_dist_func(self%wavelength_array,self%dust_mass_ext_array*self%albedo_array*&
@@ -490,7 +490,6 @@ module m_dust
       
       ! find temperature indices
       i_0=binary_search(temp_abs_rate,self%bol_mass_emissivity_array)
-      
       
       temp_norm_emissivity_array=lerp(temp_abs_rate,&
          &self%bol_mass_emissivity_array(i_0),self%bol_mass_emissivity_array(i_0+1),&

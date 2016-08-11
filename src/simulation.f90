@@ -106,8 +106,9 @@ module m_simulation
       
       write(*,"(A)") "read in particles"
       call read_in_sph_particles_3d(position,mass,temperature,self%sim_params%sim_cloud_file)
-      if (.not.self%sim_params%sim_restart) temperature=self%sim_params%sim_initial_t
       
+      if (.not.self%sim_params%sim_restart) temperature=self%sim_params%sim_initial_t
+
       allocate(self%particle_array(size(position,2)))
       write(*,"(A)") "initialise particles"
       do i=1,size(self%particle_array)
@@ -226,8 +227,6 @@ module m_simulation
       
       ! get number of threads
       n_threads=omp_get_num_procs()
-      
-      n_threads=1
       
       ! initialise luminosity packets (one per thread)
       write(*,"(A)") "initialise luminosity packets"
