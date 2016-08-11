@@ -204,9 +204,8 @@ module m_ray
       real(kind=rel_kind) :: ave_inv_mfp                ! planck averaged inverse mean free path
       logical(kind=log_kind) :: extend_ray              ! are we extending a ray?
       logical(kind=log_kind) :: short_ray               ! is ray shorter than sim resolution?
-      real(kind=rel_kind) :: ave_a_dot                  ! ray-averaged a_dot
-      real(kind=rel_kind) :: ave_rho                    ! ray-averaged density
       real(kind=rel_kind) :: mrw_distance               ! distance travelled along modified random walk
+      real(kind=rel_kind) :: mrw_tau                    ! escape optical depth through mrw sphere
       real(kind=rel_kind) :: planck_abs                 ! planck mean absorption
       real(kind=rel_kind) :: planck_sca                 ! planck mean scatter
       
@@ -272,18 +271,16 @@ module m_ray
                ! calculate ray properties
                call self%stock_geometric()
                call self%stock_sigma()
-               
-               ave_a_dot=sum(self%item(:self%n_item)%a_dot*self%item(:self%n_item)%sigma)/sum(self%item(:self%n_item)%sigma)
-               ave_rho=sum(self%item(:self%n_item)%sigma)/self%path%length
             
                ! calculate mrw variables
-               ave_a_dot=sum(self%item(:self%n_item)%a_dot*self%item(:self%n_item)%sigma)/sum(self%item(:self%n_item)%sigma)
-               ave_rho=sum(self%item(:self%n_item)%sigma)/self%path%length
-               mrw_distance=self%dust_prop%mrw_distance(ave_a_dot,self%path%length,ave_rho)
-               planck_abs=self%dust_prop%mrw_planck_abs(ave_a_dot)
+               mrw_tau=sum(self%item(:self%n_item)%sigma*self%item(:self%n_item)%f_sub*&
+                  &self%dust_prop%mrw_inv_planck_ext(self%item(:self%n_item)%a_dot))
+               mrw_distance=-log(self%dust_prop%mrw_random_y())*self%path%length*3._rel_kind*mrw_tau/pi**2
             
                ! update particle absorption rates
                do i=1,self%n_item
+               
+                  planck_abs=self%item(i)%f_sub*self%dust_prop%mrw_planck_abs(self%item(i)%a_dot)
             
                   call atomic_real_add(self%item(i)%particle_ptr%a_dot_new,&
                      mrw_distance*self%item(i)%sigma*planck_abs/self%path%length)
@@ -293,7 +290,7 @@ module m_ray
                
                      do j=1,size(self%item(i)%particle_ptr%a_dot_scatter_array)
                   
-                        planck_sca=self%dust_prop%mrw_planck_sca(ave_a_dot,&
+                        planck_sca=self%item(i)%f_sub*self%dust_prop%mrw_planck_sca(self%item(i)%a_dot,&
                            &self%item(i)%particle_ptr%lambda_array(j),self%item(i)%particle_ptr%lambda_array(j+1))
                         
                         call atomic_real_add(self%item(i)%particle_ptr%a_dot_scatter_array(j),&
@@ -308,7 +305,7 @@ module m_ray
                ! set new position, direction, wavelength
                origin=origin+self%path%direction*self%path%length
                direction=self%dust_prop%mrw_random_direction(direction)
-               self%lambda_em=self%dust_prop%mrw_random_wavelength(ave_a_dot)
+               self%lambda_em=self%dust_prop%mrw_random_wavelength(self%a_dot_sph())
                self%v_em=self%v_sph()
             
                ! restock optical properties

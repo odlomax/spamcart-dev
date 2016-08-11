@@ -144,6 +144,8 @@ module m_particle
       self%f_sub=max(0.5_rel_kind-0.5_rel_kind*erf((self%a_dot-0.5_rel_kind*(sub_a_dot_max+sub_a_dot_min))/&
          &(root_two*0.5_rel_kind*(sub_a_dot_max-sub_a_dot_min))),epsilon(0._rel_kind))
          
+      self%f_sub=1._rel_kind
+         
       return
    
    end subroutine

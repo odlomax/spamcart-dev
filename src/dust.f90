@@ -90,6 +90,7 @@ module m_dust
       procedure,non_overridable :: mrw_inv_planck_ext
       procedure,non_overridable :: mrw_planck_sca
       procedure,non_overridable :: mrw_distance
+      procedure,non_overridable :: mrw_random_y
       procedure,non_overridable,nopass :: mrw_random_direction
    
    end type
@@ -559,6 +560,25 @@ module m_dust
       return
       
    end function
+   
+   ! get random mrw_y variate
+   function mrw_random_y(self) result (y)
+   
+      ! argument declarations
+      class(dust),intent(in) :: self                        ! dust object
+      
+      ! result declaration
+      real(kind=rel_kind) :: y                              ! mrw y variate
+      
+      ! variable declarations
+      real(kind=rel_kind) :: r_num                          ! random number
+      
+      y=lookup_and_interpolate(r_num,self%mrw_zeta_array,self%mrw_y_array)
+   
+      return
+   
+   end function
+   
    
    ! get mrw distance travelled through optically thick isothermal sphere
    function mrw_distance(self,abs_rate,radius,density) result (distance)

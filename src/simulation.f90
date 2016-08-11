@@ -92,7 +92,7 @@ module m_simulation
    
       write(*,"(A)") "initialise kernel"
       allocate(kernel_m4::self%sph_kernel)
-      call self%sph_kernel%initialise()
+      call self%sph_kernel%initialise()      
       
       write(*,"(A)") "initialise dust"
       allocate(dust_d03::self%dust_prop)

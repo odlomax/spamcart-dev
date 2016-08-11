@@ -305,7 +305,8 @@ module m_binary_tree_node
             inv_mfp=inv_mfp+self%particle_array(i)%m*dust_mass_ext*w
             grad_inv_mfp=grad_inv_mfp+self%particle_array(i)%m*dust_mass_ext*grad_w
             h=h+self%particle_array(i)%m*self%particle_array(i)%inv_rho*self%particle_array(i)%h*w
-            ave_inv_mfp=ave_inv_mfp+self%particle_array(i)%m*dust_prop%mrw_inv_planck_ext(self%particle_array(i)%a_dot)*w
+            ave_inv_mfp=ave_inv_mfp+self%particle_array(i)%m*w*&
+               &self%particle_array(i)%f_sub*dust_prop%mrw_inv_planck_ext(self%particle_array(i)%a_dot)
             
          end do
       
