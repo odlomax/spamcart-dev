@@ -573,6 +573,8 @@ module m_dust
       ! variable declarations
       real(kind=rel_kind) :: r_num                          ! random number
       
+      call random_number(r_num)
+      
       y=lookup_and_interpolate(r_num,self%mrw_zeta_array,self%mrw_y_array)
    
       return
