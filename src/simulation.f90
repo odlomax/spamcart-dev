@@ -99,10 +99,8 @@ module m_simulation
       call self%dust_prop%initialise(self%sim_params%dust_r_v,self%sim_params%dust_t_min,self%sim_params%dust_t_max,&
          &self%sim_params%dust_n_t,iso_scatter=self%sim_params%dust_iso_scatter)
          
-      if (self%sim_params%sim_mrw) then
-         write(*,"(A)") "initialise modified random walk"
-         call self%dust_prop%mrw_initialise(self%sim_params%sim_n_mrw)
-      end if
+      write(*,"(A)") "initialise modified random walk"
+      call self%dust_prop%mrw_initialise(self%sim_params%sim_n_mrw)
       
       write(*,"(A)") "read in particles"
       call read_in_sph_particles_3d(position,mass,temperature,self%sim_params%sim_cloud_file)
@@ -248,7 +246,7 @@ module m_simulation
                thread_num=omp_get_thread_num()+1
                n_packets_source=int(real(self%sim_params%sim_n_packet,rel_kind)*self%point_source_array(i)%luminosity/&
                   &(total_luminosity*real(n_threads,rel_kind)))
-               luminosity_chunk=self%point_source_array(i)%luminosity/real(n_packets_source*n_threads,rel_kind)
+               luminosity_chunk=self%point_source_array(i)%luminosity/real(n_packets_source*n_threads**2,rel_kind)
                   
                do j=1,n_packets_source
                   call self%lum_packet_array(thread_num)%follow(self%point_source_array(i)%position,&
@@ -274,7 +272,7 @@ module m_simulation
          write(*,"(A)") "follow packets from external radiation field"
          n_packets_source=int(real(self%sim_params%sim_n_packet,rel_kind)*self%isrf_prop%luminosity/&
             &(total_luminosity*real(n_threads,rel_kind)))
-         luminosity_chunk=self%isrf_prop%luminosity/real(n_packets_source*n_threads,rel_kind)
+         luminosity_chunk=self%isrf_prop%luminosity/real(n_packets_source*n_threads**2,rel_kind)
          !$omp parallel num_threads(n_threads) default(shared) private(j,thread_num,position)
          
                thread_num=omp_get_thread_num()+1
