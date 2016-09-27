@@ -45,6 +45,7 @@ module m_datacube
       real(kind=rel_kind),allocatable :: y(:)               ! y coordinate
       real(kind=rel_kind),allocatable :: lambda(:)          ! wavelengths
       real(kind=rel_kind),allocatable :: i_lambda(:,:,:)    ! intensity map (lambda,x,y)
+      real(kind=rel_kind),allocatable :: sigma(:,:)         ! column density
       
       contains
       
@@ -97,6 +98,7 @@ module m_datacube
       allocate(self%y(n_y))
       allocate(self%lambda(size(lambda_array)))
       allocate(self%i_lambda(size(self%lambda),size(self%x),size(self%y)))
+      allocate(self%sigma(size(self%x),size(self%y)))
       
       ! set up coordinates
       self%x=lin_space(x_min,x_max,n_x)
@@ -169,6 +171,9 @@ module m_datacube
                      self%i_lambda(i,j,k)=sph_ray(thread_num)%ray_trace_i(self%lambda(i),v_ob,i_bg)
                   
                   end do
+                  
+                  ! set column density
+                  self%sigma(j,k)=sum(sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%sigma)
                  
                end do
                
@@ -313,6 +318,7 @@ module m_datacube
       deallocate(self%y)
       deallocate(self%lambda)
       deallocate(self%i_lambda)
+      deallocate(self%sigma)
       
       return
    

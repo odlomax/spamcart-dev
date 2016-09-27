@@ -38,7 +38,9 @@ module m_options
       character(kind=chr_kind,len=string_length) :: sim_cloud_file            ! cloud input file
       character(kind=chr_kind,len=string_length) :: sim_star_file             ! stars input file
       character(kind=chr_kind,len=string_length) :: sim_id                    ! simulation run id
-      integer(kind=int_kind) :: sim_n_packet                                  ! number of luminosity packets per iteration
+      integer(kind=int_kind) :: sim_n_packet_point                            ! number of point source luminosity packets per iteration
+      integer(kind=int_kind) :: sim_n_packet_external                         ! number of external radiation field luminosity packets per iteration
+      logical(kind=log_kind) :: sim_equal_packets_per_point                   ! equal number packets per point source
       integer(kind=int_kind) :: sim_n_it                                      ! number of iterations
       logical(kind=log_kind) :: sim_restart                                   ! restart sim? (don't use sim_initial_t)
       real(kind=rel_kind) :: sim_initial_t                                    ! initial background temperature
@@ -127,7 +129,9 @@ module m_options
       self%sim_cloud_file=""
       self%sim_star_file=""
       self%sim_id=""
-      self%sim_n_packet=1000000
+      self%sim_n_packet_point=1000000
+      self%sim_n_packet_external=1000000
+      self%sim_equal_packets_per_point=.false.
       self%sim_n_it=5
       self%sim_restart=.false.
       self%sim_initial_t=10._rel_kind
@@ -248,8 +252,14 @@ module m_options
                case ("sim_id")
                   self%sim_id=param_value
                
-               case ("sim_n_packet")
-                  read(param_value,*) self%sim_n_packet
+               case ("sim_n_packet_point")
+                  read(param_value,*) self%sim_n_packet_point
+                  
+               case ("sim_n_packet_external")
+                  read(param_value,*) self%sim_n_packet_external
+                  
+               case ("sim_equal_packets_per_point")
+                  read(param_value,*) self%sim_equal_packets_per_point
                   
                case ("sim_n_it")
                   read(param_value,*) self%sim_n_it

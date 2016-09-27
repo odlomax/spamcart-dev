@@ -65,7 +65,7 @@ module m_constants_parameters
    implicit none
    
    ! numbers
-   real(kind=rel_kind),parameter :: pi=2._rel_kind*acos(0._rel_kind)    ! 3.1412...
+   real(kind=rel_kind),parameter :: pi=4._rel_kind*atan(1._rel_kind)    ! 3.1412...
    real(kind=rel_kind),parameter :: one_third=1._rel_kind/3._rel_kind   ! 1/3
    real(kind=rel_kind),parameter :: root_two=sqrt(2._rel_kind)          ! sqrt of two
    real(kind=rel_kind),parameter :: arcsec_rad=pi/6.48e+5_rel_kind      ! 1 arcsec in radians

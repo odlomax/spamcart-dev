@@ -48,7 +48,7 @@ module m_ray
       real(kind=rel_kind) :: m                  ! particle mass
       real(kind=rel_kind) :: inv_h              ! one over smoothing length
       real(kind=rel_kind) :: inv_rho            ! one over density
-      real(kind=rel_kind) :: a_dot                  ! temperature of particle
+      real(kind=rel_kind) :: a_dot              ! temperature of particle
       real(kind=rel_kind) :: t_r                ! particle postion along ray
       real(kind=rel_kind) :: b                  ! impact m_parameter
       real(kind=rel_kind) :: s_0                ! paticle-origin distance
@@ -280,7 +280,7 @@ module m_ray
                ! update particle absorption rates
                do i=1,self%n_item
                
-                  planck_abs=self%item(i)%f_sub*self%dust_prop%mrw_planck_abs(self%item(i)%a_dot)
+                  planck_abs=self%dust_prop%mrw_planck_abs(self%item(i)%a_dot)*self%item(i)%f_sub
             
                   call atomic_real_add(self%item(i)%particle_ptr%a_dot_new,&
                      mrw_distance*self%item(i)%sigma*planck_abs/self%path%length)
@@ -290,8 +290,9 @@ module m_ray
                
                      do j=1,size(self%item(i)%particle_ptr%a_dot_scatter_array)
                   
-                        planck_sca=self%item(i)%f_sub*self%dust_prop%mrw_planck_sca(self%item(i)%a_dot,&
-                           &self%item(i)%particle_ptr%lambda_array(j),self%item(i)%particle_ptr%lambda_array(j+1))
+                        planck_sca=self%dust_prop%mrw_planck_sca(self%item(i)%a_dot,&
+                           &self%item(i)%particle_ptr%lambda_array(j),self%item(i)%particle_ptr%lambda_array(j+1))*&
+                           &self%item(i)%f_sub
                         
                         call atomic_real_add(self%item(i)%particle_ptr%a_dot_scatter_array(j),&
                            &mrw_distance*self%item(i)%sigma*planck_sca/self%path%length)
@@ -381,7 +382,6 @@ module m_ray
                call self%path%initialise(origin,direction,length)
                call self%stock_sigma()
                tau_1=self%tau_sph()-tau
-!                write(*,*) "iteration"
                
                
                ! exit if l_0 and l_1 have converged
@@ -446,23 +446,8 @@ module m_ray
          grad_inv_mfp=self%grad_inv_mfp()
          h=self%h_sph()
          if (use_mrw) ave_inv_mfp=self%ave_inv_mfp_sph()
-         
-!          write(*,*) "wavelength", self%lambda_em
-!          write(*,*) "items on ray",self%n_item
-!          write(*,*) "live items",count(self%item(:self%n_item)%b<2._rel_kind)
-!          write(*,*) "ray origin",self%path%origin
-!          write(*,*) "ray terminus",origin
-!          write(*,*) "ray length",self%path%length
-!          write(*,*) "optical depth",tau
-!          write(*,*)
-!          
-!          write(1,*) self%path%origin
-!          write(1,*) origin
-!          write(1,*)
      
       end do
-!       write(1,*)
-!       write(1,*)
      
       return
       
@@ -524,16 +509,19 @@ module m_ray
          ! calculate opacity and albedo
          call self%dust_prop%dust_mass_ext_and_albedo(lambda_em,kappa_ext,a)
          
+         ! adjust extinction for f_sub
+         kappa_ext=kappa_ext*self%item(i)%f_sub
+         
          ! sink term
          i_value=i_value*exp(-kappa_ext*self%item(i)%sigma)
          
          ! emission component source term
-         j_value=self%dust_prop%mono_mass_emissivity(lambda_em,self%item(i)%a_dot)
+         j_value=self%dust_prop%mono_mass_emissivity(lambda_em,self%item(i)%a_dot)*self%item(i)%f_sub
          
          ! scattering source term
          if (associated(self%item(i)%particle_ptr%lambda_array)) then
          
-            j_value=j_value+self%item(i)%particle_ptr%a_dot_scatter(lambda_em)*0.25_rel_kind/pi
+            j_value=j_value+self%item(i)%particle_ptr%a_dot_scatter(lambda_em)*self%item(i)%f_sub*0.25_rel_kind/pi
          
          end if
          
@@ -692,7 +680,7 @@ module m_ray
             &(dot_product(self%item(i)%v-self%v_em,self%path%direction)/c_light+1._rel_kind)
          call self%dust_prop%dust_mass_ext_and_albedo(self%item(i)%lambda_ob,self%item(i)%kappa_ext,self%item(i)%a)
          
-         ! adjust extinction by f_sub
+         ! adjust opacity for f_sub
          self%item(i)%kappa_ext=self%item(i)%kappa_ext*self%item(i)%f_sub
          
       end do
@@ -727,6 +715,7 @@ module m_ray
          self%item(i)%sigma=self%item(i)%m*self%item(i)%inv_h**(n_dim-1)*&
             &merge(sigma_0+sigma_1,abs(sigma_0-sigma_1),&
             &self%item(i)%t_r>0._rel_kind.and.self%item(i)%t_r<self%path%length)
+         
       
       end do
       
@@ -865,7 +854,7 @@ module m_ray
 
       ave_inv_mfp_value=sum(self%item(:self%n_item)%m*&
          &self%item(:self%n_item)%inv_h**(n_dim)*&
-         &self%dust_prop%mrw_inv_planck_ext(self%item(:self%n_item)%a_dot)*&
+         &self%dust_prop%mrw_inv_planck_ext(self%item(:self%n_item)%a_dot)*self%item(:self%n_item)%f_sub*&
          &self%sph_kernel%w(self%item(:self%n_item)%s_1))
       
       return

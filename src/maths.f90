@@ -59,11 +59,6 @@ module m_maths
       procedure :: lookup_and_geo_interpolate_2
    end interface
    
-   interface trapz_intgr
-      procedure :: indef_trapz_intgr
-      procedure :: def_trapz_intgr
-   end interface
-   
    interface make_hist
       procedure :: make_hist_1d
    end interface
@@ -479,16 +474,6 @@ module m_maths
       ! result declaration
       real(kind=rel_kind) :: f                                ! f(x,y)
       
-      ! variable declarations
-      real(kind=rel_kind) :: f_0                              ! f(x,y_0)
-      real(kind=rel_kind) :: f_1                              ! f(x,y_1)
-      
-      ! solve for f_0
-      f_0=lerp(x,x_0,x_1,f_00,f_10)
-      
-      ! solve for f_1
-      f_1=lerp(x,x_0,x_1,f_01,f_11)
-      
       ! solve for f
       f=lerp(y,y_0,y_1,lerp(x,x_0,x_1,f_00,f_10),lerp(x,x_0,x_1,f_01,f_11))
       
@@ -686,7 +671,7 @@ module m_maths
    end function
    
    ! perform a trapezoidal integration
-   pure function indef_trapz_intgr(x_values,f_values) result (value)
+   pure function trapz_intgr(x_values,f_values) result (value)
    
       ! argument declarations
       real(kind=rel_kind),intent(in) :: x_values(:)   ! array of x
@@ -703,48 +688,6 @@ module m_maths
       value=0.5_rel_kind*sum((f_values(1:n_x-1)+f_values(2:n_x))*&
          &(x_values(2:n_x)-x_values(1:n_x-1)))
       
-      return
-   
-   end function
-   
-   ! perform a definite trapezoidal integration
-   pure function def_trapz_intgr(x_values,f_values,x_low,x_high) result (value)
-   
-      ! argument declarations
-      real(kind=rel_kind),intent(in) :: x_values(:)   ! array of x
-      real(kind=rel_kind),intent(in) :: f_values(:)   ! array of f(x)
-      real(kind=rel_kind),intent(in) :: x_low         ! x lower bound
-      real(kind=rel_kind),intent(in) :: x_high        ! x upper bound
-      
-      ! result declaration
-      real(kind=rel_kind) :: value                    ! integral of f(x)dx
-      
-      ! variable declarations
-      integer(kind=int_kind) :: i_x_low               ! index of x_low
-      integer(kind=int_kind) :: i_x_high              ! index of x_high
-      real(kind=rel_kind) :: x_low_mod                ! modified x_low
-      real(kind=rel_kind) :: x_high_mod               ! modified x_high
-      
-      ! set x_low and x_high
-      x_low_mod=max(x_low,x_values(1))
-      x_high_mod=min(x_high,x_values(size(x_values)))
-      i_x_low=binary_search(x_low_mod,x_values)
-      i_x_high=binary_search(x_high_mod,x_values)
-      
-   
-      ! perform integral
-      value=0._rel_kind
-      
-      ! integral of upper limit
-      if (i_x_high>1) value=value+trapz_intgr(x_values(:i_x_high),f_values(:i_x_high))
-      value=value+0.5_rel_kind*(lerp(x_high_mod,x_values(i_x_high),x_values(i_x_high+1),f_values(i_x_high),f_values(i_x_high+1))+&
-         &f_values(i_x_high))*(x_high_mod-x_values(i_x_high))
-         
-      ! integral of lower limit
-      if (i_x_low>1) value=value-trapz_intgr(x_values(:i_x_low),f_values(:i_x_low))
-      value=value-0.5_rel_kind*(lerp(x_low_mod,x_values(i_x_low),x_values(i_x_low+1),f_values(i_x_low),f_values(i_x_low+1))+&
-         &f_values(i_x_low))*(x_low_mod-x_values(i_x_low))
-         
       return
    
    end function

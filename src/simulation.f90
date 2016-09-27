@@ -26,6 +26,7 @@ module m_simulation
 
    use m_kind_parameters
    use m_constants_parameters
+   use m_atomic_update
    use m_dust
    use m_dust_d03
    use m_source
@@ -208,20 +209,15 @@ module m_simulation
       integer(kind=int_kind),intent(in) :: iteration              ! iteration number
       
       ! variable declarations
-      integer(kind=int_kind) :: i,j                               ! counter
-      integer(kind=int_kind) :: n_packets_source                  ! number of packets for individual source
+      integer(kind=int_kind) :: i,j,k                             ! counter
       integer(kind=int_kind) :: n_threads                         ! number of available threads
-      integer(kind=int_kind) :: thread_num                        ! thread number
+      integer(kind=int_kind) :: n_packets_source                  ! number of packets for individual source
       real(kind=rel_kind) :: total_luminosity                     ! total luminosity of all sources
       real(kind=rel_kind) :: luminosity_chunk                     ! luminosity chunk for each source
       real(kind=rel_kind) :: position(n_dim)                      ! position vector
+      real(kind=rel_kind) :: direction(n_dim)                     ! direction vector
       real(kind=rel_kind),allocatable :: position_array(:,:)      ! array of positions
       character(kind=chr_kind,len=string_length) :: output_file   ! output file        
-      
-      ! calculate total luminosity
-      total_luminosity=0._rel_kind
-      if (associated(self%point_source_array)) total_luminosity=total_luminosity+sum(self%point_source_array%luminosity)
-      if (associated(self%isrf_prop)) total_luminosity=total_luminosity+self%isrf_prop%luminosity
       
       ! get number of threads
       n_threads=omp_get_num_procs()
@@ -239,59 +235,68 @@ module m_simulation
       
       if (associated(self%point_source_array)) then
       
-         write(*,"(A)") "follow packets from point sources"
-         !$omp parallel num_threads(n_threads) default(shared) private(i,j,thread_num,n_packets_source,luminosity_chunk)
-            do i=1,size(self%point_source_array)
+         total_luminosity=sum(self%point_source_array%luminosity)
          
-               thread_num=omp_get_thread_num()+1
-               n_packets_source=int(real(self%sim_params%sim_n_packet,rel_kind)*self%point_source_array(i)%luminosity/&
-                  &(total_luminosity*real(n_threads,rel_kind)))
-               luminosity_chunk=self%point_source_array(i)%luminosity/real(n_packets_source*n_threads**2,rel_kind)
-                  
+         write(*,"(A)") "follow packets from point sources"
+         
+         do i=1,size(self%point_source_array)
+         
+            if (self%sim_params%sim_equal_packets_per_point) then
+               n_packets_source=self%sim_params%sim_n_packet_point/size(self%point_source_array)
+            else
+               n_packets_source=&
+                  &int(real(self%sim_params%sim_n_packet_point,rel_kind)*self%point_source_array(i)%luminosity/total_luminosity)
+            end if
+         
+            luminosity_chunk=self%point_source_array(i)%luminosity/real(n_packets_source,rel_kind)
+            k=0
+      
+            !$omp parallel do num_threads(n_threads) default(shared) private(j)
                do j=1,n_packets_source
-                  call self%lum_packet_array(thread_num)%follow(self%point_source_array(i)%position,&
+                  call self%lum_packet_array(omp_get_thread_num()+1)%follow(self%point_source_array(i)%position,&
                      &self%point_source_array(i)%random_direction(),self%point_source_array(i)%velocity,&
                      &self%point_source_array(i)%random_wavelength(),luminosity_chunk,&
                      &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma)
-               
-                  if (mod(j,min(1000,n_packets_source))==0.and.thread_num==1) &
+                     
+                  call atomic_integer_add(k,1)
+         
+                  if (mod(k,min(1000,n_packets_source))==0) &
                      &write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)") &
-                        &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
-                        &", star ",i," of ",size(self%point_source_array),&
-                        &", packet ",j*n_threads," of ",n_packets_source*n_threads
-               
+                     &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
+                     &", star ",i," of ",size(self%point_source_array),&
+                     &", packet ",k," of ",n_packets_source
                end do
-                       
-            end do
-         !$omp end parallel
+            !$omp end parallel do
+                   
+         end do
       
       end if
       
       if (associated(self%isrf_prop)) then
       
          write(*,"(A)") "follow packets from external radiation field"
-         n_packets_source=int(real(self%sim_params%sim_n_packet,rel_kind)*self%isrf_prop%luminosity/&
-            &(total_luminosity*real(n_threads,rel_kind)))
-         luminosity_chunk=self%isrf_prop%luminosity/real(n_packets_source*n_threads**2,rel_kind)
-         !$omp parallel num_threads(n_threads) default(shared) private(j,thread_num,position)
-         
-               thread_num=omp_get_thread_num()+1
+         luminosity_chunk=self%isrf_prop%luminosity/real(self%sim_params%sim_n_packet_external,rel_kind)
+         k=0
+         !$omp parallel do num_threads(n_threads) default(shared) private(j,position,direction)
                   
-               do j=1,n_packets_source
-                  position=self%isrf_prop%random_position()
-                  call self%lum_packet_array(thread_num)%follow(position,&
-                     &self%isrf_prop%random_direction(position),self%isrf_prop%velocity,&
-                     &self%isrf_prop%random_wavelength(),luminosity_chunk,&
-                     &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma)
-               
-                  if (mod(j,min(1000,n_packets_source))==0.and.thread_num==1) &
-                     &write(*,"(A,I0,A,I0,A,I0,A,I0)") &
-                        &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
-                        &", external rad field, packet ",j*n_threads," of ",n_packets_source*n_threads
-               
-               end do
+            do j=1,self%sim_params%sim_n_packet_external
+               position=self%isrf_prop%random_position()
+               direction=self%isrf_prop%random_direction(position)
+               call self%lum_packet_array(omp_get_thread_num()+1)%follow(position,&
+                  &direction,self%isrf_prop%velocity,&
+                  &self%isrf_prop%random_wavelength(),luminosity_chunk,&
+                  &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma)
+            
+               call atomic_integer_add(k,1)
+            
+               if (mod(k,min(1000,self%sim_params%sim_n_packet_external))==0) &
+                  &write(*,"(A,I0,A,I0,A,I0,A,I0)") &
+                     &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
+                     &", external rad field, packet ",k," of ",self%sim_params%sim_n_packet_external
+            
+            end do
                        
-         !$omp end parallel
+         !$omp end parallel do
       
       end if
       
@@ -340,7 +345,7 @@ module m_simulation
       
       write(*,"(A)") "write out datacube"
       call  write_out_datacube_3d(self%intensity_cube%x,self%intensity_cube%y,self%intensity_cube%lambda,&
-         &self%intensity_cube%i_lambda,self%sim_params%sim_id)
+         &self%intensity_cube%i_lambda,self%intensity_cube%sigma,self%sim_params%sim_id)
       
       return
    

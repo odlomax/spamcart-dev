@@ -42,4 +42,18 @@ module m_atomic_update
    
    end subroutine
    
+   ! add real b to real a
+   subroutine atomic_integer_add(a,b)
+   
+      ! argument declarations
+      integer(kind=int_kind),intent(inout) :: a
+      integer(kind=int_kind),intent(in) :: b
+      
+      !$omp atomic update
+      a=a+b
+      
+      return
+   
+   end subroutine
+   
 end module

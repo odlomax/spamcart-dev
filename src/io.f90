@@ -571,13 +571,14 @@ module m_io
    
    end subroutine
    
-   subroutine write_out_datacube_3d(x,y,lambda,i_lambda,sim_id)
+   subroutine write_out_datacube_3d(x,y,lambda,i_lambda,sigma,sim_id)
    
       ! argument declarations
       real(kind=rel_kind),intent(in) :: x(:)                         ! x positions
       real(kind=rel_kind),intent(in) :: y(:)                         ! y positions
       real(kind=rel_kind),intent(in) :: lambda(:)                    ! wavelengths
       real(kind=rel_kind),intent(in) :: i_lambda(:,:,:)              ! intensity grid (lambda,x,y)
+      real(kind=rel_kind),intent(in) :: sigma(:,:)                   ! column density
       character(kind=chr_kind,len=string_length),intent(in) :: sim_id! run id
       
       ! variable declarations
@@ -618,6 +619,16 @@ module m_io
          write(1,"(2(E25.17))") lambda(i),sum(i_lambda(i,:,:))*d_a
       end do
       
+      close(1)
+      
+      open(1,file=trim(sim_id)//"_column_density.dat")
+      write(1,"(3(A25))") "x_1","x_2","sigma"
+      write(1,"(3(A25))") "cm", "cm","g cm^-2"
+         do j=1,size(y)
+            do i=1,size(x)
+               write(1,"(3(E25.17))") x(i),y(j),sigma(i,j)
+            end do
+         end do
       close(1)
       
       return
