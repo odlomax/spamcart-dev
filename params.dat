@@ -1,13 +1,17 @@
 sim_cloud_file = be_sphere_00.dat
 sim_id = bb_test
-sim_n_it = 3
-sim_n_packet = 100000
+sim_n_it = 5
+sim_n_packet_external = 100000
 
 point_sources=.false.
 
+datacube_make=.true.
+
+dust_iso_scatter=.false.
+sim_mrw=.false.
+sph_scattered_light=.false.
+
 ext_rf_type = bb
 ext_rf_cmb = .false
-ext_rf_t = 120.
-ext_rf_d = 0.0625
-
-datacube_lambda_string= 10. 30. 70. 110. 160. 250. 350. 500.
+ext_rf_t = 60.
+ext_rf_d = 1.
