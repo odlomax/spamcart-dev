@@ -209,7 +209,8 @@ module m_dust_d03
       
          self%mono_mass_emissivity_array(:,i)=planck_lambda(self%wavelength_array,self%temperature_array(i))*&
             &self%dust_mass_ext_array*(1._rel_kind-self%albedo_array)
-         self%cum_mono_mass_emissivity(:,i)=cum_dist_func(self%wavelength_array,self%mono_mass_emissivity_array(:,i))
+         self%cum_mono_mass_emissivity(:,i)=&
+            &cum_dist_func(self%wavelength_array,self%mono_mass_emissivity_array(:,i),.true._log_kind)
          self%bol_mass_emissivity_array(i)=trapz_intgr(self%wavelength_array,self%mono_mass_emissivity_array(:,i))
          self%norm_mono_mass_emissivity(:,i)=self%mono_mass_emissivity_array(:,i)/&
             &self%bol_mass_emissivity_array(i)

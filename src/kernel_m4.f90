@@ -191,9 +191,6 @@ module m_kernel_m4
          &0.375_rel_kind*(b_mod**2+4._rel_kind)*b_mod**2*&
          &log((r_mod+sqrt(r_mod**2-b_mod**2))/b_mod)
          
-         
-      sigma_value=sigma_value*0.25_rel_kind
-         
       return
    
    end function

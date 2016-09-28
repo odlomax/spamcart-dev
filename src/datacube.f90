@@ -156,7 +156,7 @@ module m_datacube
             
                do j=1,size(self%i_lambda,2)
                
-                  pix_position=sph_tree%com+sph_tree%max_length*img_z_unit+self%x(j)*img_x_unit+self%y(k)*img_y_unit
+                  pix_position=sph_tree%com+0.5_rel_kind*sph_tree%max_length*img_z_unit+self%x(j)*img_x_unit+self%y(k)*img_y_unit
                   call sph_ray(thread_num)%ray_trace_initialise(pix_position,-1._rel_kind*img_z_unit)
                
                   do concurrent (i=1:size(self%i_lambda,1))

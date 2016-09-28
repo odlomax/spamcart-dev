@@ -93,7 +93,7 @@ module m_source_external_bb
       
       ! normalise intensity and calculate cumulative distribution
       self%norm_intensity_array=self%intensity_array/self%bolometric_intensity
-      self%cum_intensity_array=cum_dist_func(self%wavelength_array,self%intensity_array)
+      self%cum_intensity_array=cum_dist_func(self%wavelength_array,self%intensity_array,.true._log_kind)
       
       
       return

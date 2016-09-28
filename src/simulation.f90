@@ -216,6 +216,7 @@ module m_simulation
       real(kind=rel_kind) :: luminosity_chunk                     ! luminosity chunk for each source
       real(kind=rel_kind) :: position(n_dim)                      ! position vector
       real(kind=rel_kind) :: direction(n_dim)                     ! direction vector
+      real(kind=rel_kind) :: wavelength                           ! wavelength
       real(kind=rel_kind),allocatable :: position_array(:,:)      ! array of positions
       character(kind=chr_kind,len=string_length) :: output_file   ! output file        
       
@@ -277,14 +278,15 @@ module m_simulation
          write(*,"(A)") "follow packets from external radiation field"
          luminosity_chunk=self%isrf_prop%luminosity/real(self%sim_params%sim_n_packet_external,rel_kind)
          k=0
-         !$omp parallel do num_threads(n_threads) default(shared) private(j,position,direction)
+         !$omp parallel do num_threads(n_threads) default(shared) private(j,position,direction,wavelength)
                   
             do j=1,self%sim_params%sim_n_packet_external
                position=self%isrf_prop%random_position()
                direction=self%isrf_prop%random_direction(position)
+               wavelength=self%isrf_prop%random_wavelength()
                call self%lum_packet_array(omp_get_thread_num()+1)%follow(position,&
                   &direction,self%isrf_prop%velocity,&
-                  &self%isrf_prop%random_wavelength(),luminosity_chunk,&
+                  &wavelength,luminosity_chunk,&
                   &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma)
             
                call atomic_integer_add(k,1)

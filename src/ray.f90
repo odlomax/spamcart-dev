@@ -143,7 +143,7 @@ module m_ray
       self%root_node=>sph_tree%root_node
 
       self%min_length=sph_tree%min_length
-      self%max_length=2._rel_kind*sph_tree%max_length
+      self%max_length=sph_tree%max_length
       
       ! allocate ray_particle array
       allocate(self%item(n_ray))

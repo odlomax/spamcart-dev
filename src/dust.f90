@@ -448,7 +448,7 @@ module m_dust
          ! planck function
          self%mrw_planck_function_array(:,i)=planck_lambda(self%wavelength_array,self%temperature_array(i))
          self%mrw_bol_planck_function_array(i)=trapz_intgr(self%wavelength_array,self%mrw_planck_function_array(:,i))
-         self%mrw_cum_planck_function(:,i)=cum_dist_func(self%wavelength_array,self%mrw_planck_function_array(:,i))
+         self%mrw_cum_planck_function(:,i)=cum_dist_func(self%wavelength_array,self%mrw_planck_function_array(:,i),.true._log_kind)
          self%mrw_norm_planck_function(:,i)=self%mrw_planck_function_array(:,i)/self%mrw_bol_planck_function_array(i)
          
          ! planck abs/ext/sca
