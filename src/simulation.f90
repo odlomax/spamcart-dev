@@ -69,6 +69,8 @@ module m_simulation
       procedure,non_overridable :: destroy
       procedure,non_overridable :: perform_iteration
       procedure,non_overridable :: make_datacube
+      procedure,non_overridable :: write_particles_bin
+      procedure,non_overridable :: read_particles_bin
    
    end type
    
@@ -83,6 +85,8 @@ module m_simulation
       
       ! variable declarations
       integer(kind=int_kind) :: i,j                               ! counter
+      integer(kind=int_kind) :: string_len                        ! length of string
+      logical(kind=log_kind) :: h_present                         ! is smoothing length present in cloud file
       real(kind=rel_kind),allocatable :: position(:,:)            ! particle positions
       real(kind=rel_kind),allocatable :: mass(:)                  ! particle mass
       real(kind=rel_kind),allocatable :: temperature(:)           ! particle temperature
@@ -104,26 +108,35 @@ module m_simulation
       call self%dust_prop%mrw_initialise(self%sim_params%sim_n_mrw)
       
       write(*,"(A)") "read in particles"
-      call read_in_sph_particles_3d(position,mass,temperature,self%sim_params%sim_cloud_file)
+      ! check if cloud input is ascii (.dat) or binary (.bin)
+      string_len=len_trim(self%sim_params%sim_cloud_file)
+      select case (self%sim_params%sim_cloud_file(string_len-2:string_len))
+         case ("bin")
+            call self%read_particles_bin()
+            h_present=.true.
+         
+         case ("dat")
+            call read_in_sph_particles_3d(position,mass,temperature,self%sim_params%sim_cloud_file)
+            if (.not.self%sim_params%sim_restart) temperature=self%sim_params%sim_initial_t
+            allocate(self%particle_array(size(position,2)))
+            write(*,"(A)") "initialise particles"
+            do i=1,size(self%particle_array)
+               if (self%sim_params%sph_scattered_light) then
+                  call self%particle_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),mass(i),&
+                     &4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(temperature(i)),&
+                     &self%sim_params%sph_lambda_min,self%sim_params%sph_lambda_max,self%sim_params%sph_n_lambda)
+               else
+                  call self%particle_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),mass(i),&
+                     &4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(temperature(i)))
+               end if
+            end do
+            h_present=.false.
       
-      if (.not.self%sim_params%sim_restart) temperature=self%sim_params%sim_initial_t
-
-      allocate(self%particle_array(size(position,2)))
-      write(*,"(A)") "initialise particles"
-      do i=1,size(self%particle_array)
-         if (self%sim_params%sph_scattered_light) then
-            call self%particle_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),mass(i),&
-               &4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(temperature(i)),&
-               &self%sim_params%sph_lambda_min,self%sim_params%sph_lambda_max,self%sim_params%sph_n_lambda)
-         else
-            call self%particle_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),mass(i),&
-               &4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(temperature(i)))
-         end if
-      end do
+      end select
       
       write(*,"(A)") "initialise tree"
       allocate(self%sph_tree)
-      call self%sph_tree%initialise(self%particle_array,self%sph_kernel,self%sim_params%sph_eta,self%sim_params%sim_min_d)
+      call self%sph_tree%initialise(self%particle_array,self%sph_kernel,self%sim_params%sph_eta,self%sim_params%sim_min_d,h_present)
       
       if (self%sim_params%point_sources) then
       
@@ -307,13 +320,15 @@ module m_simulation
       
       ! write out particles
       write(*,"(A)") "write out particles"
-      write(output_file,"(A,I2.2,A)") trim(self%sim_params%sim_id)//"_",iteration,".dat"
+      write(output_file,"(A,I2.2,A)") trim(self%sim_params%sim_id)//"/iteration_",iteration,".dat"
       allocate(position_array(n_dim,size(self%particle_array)))
       do i=1,size(self%particle_array)
          position_array(:,i)=self%particle_array(i)%r
       end do
       call write_out_sph_particles_3d(position_array,self%particle_array%m,&
          &self%dust_prop%dust_temperature(self%particle_array%a_dot),self%particle_array%rho,self%particle_array%h,output_file)
+         
+      call self%write_particles_bin(iteration)
       
       ! deallocate luminosity packets
       call self%lum_packet_array%destroy()
@@ -352,5 +367,95 @@ module m_simulation
       return
    
    end subroutine
+   
+   ! write out particles in binary format
+   subroutine write_particles_bin(self,iteration)
+      
+      ! character declarations
+      class(simulation),intent(in) :: self                     ! simulation object
+      integer(kind=int_kind),intent(in) :: iteration           ! iteration number
+      
+      ! variable delcarations
+      integer(kind=int_kind) :: i                              ! counter
+      character(kind=chr_kind,len=string_length) :: file_name  ! file name
+      
+      ! open file
+      write(file_name,"(A,I2.2,A)") trim(self%sim_params%sim_id)//"/iteration_",iteration,".bin"
+      open(1,file=trim(file_name),form="unformatted")
+      
+      ! write number of particles to file
+      write(1) size(self%particle_array,kind=int_kind)
+      
+      do i=1,size(self%particle_array)
+      
+         ! write out particle properties
+         
+         write(1) self%particle_array(i)%r
+         write(1) self%particle_array(i)%v
+         write(1) self%particle_array(i)%m
+         write(1) self%particle_array(i)%h
+         write(1) self%particle_array(i)%rho
+         write(1) self%particle_array(i)%a_dot
+         write(1) self%particle_array(i)%f_sub
+         write(1) size(self%particle_array(i)%lambda_array,kind=int_kind)
+         write(1) self%particle_array(i)%lambda_array
+         write(1) self%particle_array(i)%a_dot_scatter_array(:)
+         
+      end do
+      
+      close(1)
+      
+      return
+   
+   end subroutine
+   
+   ! write out particles in binary format
+   subroutine read_particles_bin(self)
+      
+      ! character declarations
+      class(simulation),intent(inout) :: self                  ! simulation object
+      
+      ! variable delcarations
+      integer(kind=int_kind) :: i                              ! counter
+      integer(kind=int_kind) :: n_particles                    ! number of particles
+      integer(kind=int_kind) :: n_array                        ! arbitrary array length
+      
+      ! open file       
+      open(1,file=trim(self%sim_params%sim_cloud_file),form="unformatted")
+      
+      ! write number of particles to file
+      read(1) n_particles
+      allocate(self%particle_array(n_particles))
+      
+      do i=1,size(self%particle_array)
+      
+         ! write out particle properties
+         
+         read(1) self%particle_array(i)%r
+         read(1) self%particle_array(i)%v
+         read(1) self%particle_array(i)%m
+         read(1) self%particle_array(i)%h
+         read(1) self%particle_array(i)%rho
+         read(1) self%particle_array(i)%a_dot
+         read(1) self%particle_array(i)%f_sub
+         read(1) n_array
+         allocate(self%particle_array(i)%lambda_array(n_array))
+         allocate(self%particle_array(i)%a_dot_scatter_array(n_array-1))
+         read(1) self%particle_array(i)%lambda_array
+         read(1) self%particle_array(i)%a_dot_scatter_array
+         
+         ! calculate some derived quantities
+         self%particle_array(i)%inv_h=1._rel_kind/self%particle_array(i)%h
+         self%particle_array(i)%inv_rho=1._rel_kind/self%particle_array(i)%rho
+         self%particle_array(i)%a_dot_new=0._rel_kind
+         
+      end do
+      
+      close(1)
+      
+      return
+   
+   end subroutine  
+
 
 end module

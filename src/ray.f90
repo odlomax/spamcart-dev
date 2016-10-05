@@ -283,7 +283,7 @@ module m_ray
                   planck_abs=self%dust_prop%mrw_planck_abs(self%item(i)%a_dot)*self%item(i)%f_sub
             
                   call atomic_real_add(self%item(i)%particle_ptr%a_dot_new,&
-                     mrw_distance*self%item(i)%sigma*planck_abs/self%path%length)
+                     self%l_chunk*mrw_distance*self%item(i)%sigma*planck_abs/self%path%length)
             
                   ! check if scattered light array exists
                   if (associated(self%item(i)%particle_ptr%a_dot_scatter_array)) then
@@ -295,7 +295,7 @@ module m_ray
                            &self%item(i)%f_sub
                         
                         call atomic_real_add(self%item(i)%particle_ptr%a_dot_scatter_array(j),&
-                           &mrw_distance*self%item(i)%sigma*planck_sca/self%path%length)
+                           &self%l_chunk*mrw_distance*self%item(i)%sigma*planck_sca/self%path%length)
                   
                      end do
                

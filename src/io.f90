@@ -591,7 +591,7 @@ module m_io
       ! write out image for each wavelength
       do i=1,size(lambda)
       
-         write(file_name,"(A,E10.4,A)") trim(sim_id)//"_image_lambda=",lambda(i),"_micron.dat" 
+         write(file_name,"(A,E10.4,A)") trim(sim_id)//"/image_lambda=",lambda(i),"_micron.dat" 
          open(1,file=trim(file_name))
          ! write header 
          write(1,"(3(A25))") "x_1","x_2","i_lambda"
@@ -609,7 +609,7 @@ module m_io
       
       ! write out spectrum
       d_a=((x(size(x))-x(1))*(y(size(y))-y(1)))/real(size(x)*size(y),rel_kind)
-      open(1,file=trim(sim_id)//"_spectrum.dat")
+      open(1,file=trim(sim_id)//"/spectrum.dat")
       
       write(1,"(2(A25))") "lambda","I_lambda"
       write(1,"(A25,A26)") "micron", "erg s^-1 sr^-1 micron^-1"
@@ -621,7 +621,7 @@ module m_io
       
       close(1)
       
-      open(1,file=trim(sim_id)//"_column_density.dat")
+      open(1,file=trim(sim_id)//"/column_density.dat")
       write(1,"(3(A25))") "x_1","x_2","sigma"
       write(1,"(3(A25))") "cm", "cm","g cm^-2"
          do j=1,size(y)

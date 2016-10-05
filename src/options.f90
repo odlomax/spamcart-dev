@@ -174,13 +174,13 @@ module m_options
       self%sph_scattered_light=.false.
       self%sph_lambda_min=1.e-1_rel_kind
       self%sph_lambda_max=1.e+1_rel_kind
-      self%sph_n_lambda=21
+      self%sph_n_lambda=11
       
       ! set datacube  params
       self%datacube_make=.true.
       self%datacube_convolve=.true.
-      self%datacube_lambda_string="4.5 5.8 8.0 24. 70. 100. 160. 250. 350. 500."    ! IRAC/MIPS/PACS/SPIRE (micron)
-      self%datacube_fwhm_string="1.7 1.7 1.9 6.0 5.6 6.8 12.0 17.6 23.9 35.2"       ! PSF FWHM (arcsec)
+      self%datacube_lambda_string="3.6 4.5 5.8 8.0 24. 70. 100. 160. 250. 350. 500."    ! IRAC/MIPS/PACS/SPIRE (micron)
+      self%datacube_fwhm_string="1.7 1.7 1.7 1.9 6.0 5.6 6.8 12.0 17.6 23.9 35.2"       ! PSF FWHM (arcsec)
       self%datacube_distance=3.0856776e+18                                          ! distance from source (1 pc)
       self%datacube_x_min=-4.4879361e+16_rel_kind                                   ! 3000 au
       self%datacube_x_max=4.4879361e+16_rel_kind                                    ! 3000 au
@@ -409,6 +409,9 @@ module m_options
       
       ! sort out conflicts
       if (self%sim_n_it==0) self%sph_scattered_light=.false.
+      
+      ! make sure directory exists for file output
+      call execute_command_line("mkdir "//trim(self%sim_id))
       
       ! close params file
       close(1)

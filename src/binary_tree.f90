@@ -57,7 +57,7 @@ module m_binary_tree
    contains
    
    ! initialise binary tree
-   subroutine initialise(self,particle_array,sph_kernel,eta,min_d)
+   subroutine initialise(self,particle_array,sph_kernel,eta,min_d,h_present)
    
       ! argument declarations
       class(binary_tree),intent(inout) :: self                  ! binary tree object
@@ -65,6 +65,7 @@ module m_binary_tree
       class(kernel),intent(inout),target :: sph_kernel          ! sph kernel
       real(kind=rel_kind),intent(in) :: eta                     ! smoothing length scale factor
       real(kind=rel_kind),intent(in) :: min_d                   ! minimum resolvable distance in simulation
+      logical(kind=log_kind),intent(in) :: h_present            ! has smoothing length been calculated?
       
       ! variable declarations
       integer(kind=int_kind) :: i                               ! counter
@@ -84,13 +85,17 @@ module m_binary_tree
       write(*,"(A)") "stock tree (round 1)"
       call self%root_node%stock(sph_kernel)      
       
-      ! calculate smoothing lengths
-      write(*,"(A)") "calculate h"
-      call self%calc_h(eta)
+      if (.not.h_present) then
       
-      ! stock tree from root node (round 2)
-      write(*,"(A)") "stock tree (round 2)"
-      call self%root_node%stock(self%sph_kernel)    
+         ! calculate smoothing lengths
+         write(*,"(A)") "calculate h"
+         call self%calc_h(eta)
+      
+         ! stock tree from root node (round 2)
+         write(*,"(A)") "stock tree (round 2)"
+         call self%root_node%stock(self%sph_kernel)
+         
+      end if
       
       
       ! calculate com, max_length and min_length
@@ -248,7 +253,7 @@ module m_binary_tree
    pure subroutine get_sph_quantity(self,r,v,a_dot,rho)
    
       ! argument declarations
-      class(binary_tree),intent(in) :: self                     ! binary tree node object
+      class(binary_tree),intent(in) :: self                     ! binary tree object
       real(kind=rel_kind),intent(in) :: r(n_dim)                ! position
       real(kind=rel_kind),intent(out),optional :: v(n_dim)      ! velocity
       real(kind=rel_kind),intent(out),optional :: a_dot         ! energy absorption rate
