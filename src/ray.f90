@@ -553,7 +553,7 @@ module m_ray
       tau_value=0._rel_kind
       do i=1,self%n_item
          lambda_em=lambda_ob*(dot_product(v_ob-self%item(i)%v,self%path%direction)/c_light+1._rel_kind)
-         tau_value=tau_value+self%item(i)%sigma*self%dust_prop%dust_mass_ext(lambda_em)
+         tau_value=tau_value+self%item(i)%sigma*self%dust_prop%dust_mass_ext(lambda_em)*self%item(i)%f_sub
       end do
    
       return
