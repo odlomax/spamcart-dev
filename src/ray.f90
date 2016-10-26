@@ -509,24 +509,21 @@ module m_ray
          ! calculate opacity and albedo
          call self%dust_prop%dust_mass_ext_and_albedo(lambda_em,kappa_ext,a)
          
-         ! adjust extinction for f_sub
-         kappa_ext=kappa_ext*self%item(i)%f_sub
-         
          ! sink term
-         i_value=i_value*exp(-kappa_ext*self%item(i)%sigma)
+         i_value=i_value*exp(-kappa_ext*self%item(i)%sigma*self%item(i)%f_sub)
          
          ! emission component source term
-         j_value=self%dust_prop%mono_mass_emissivity(lambda_em,self%item(i)%a_dot)*self%item(i)%f_sub
+         j_value=self%dust_prop%mono_mass_emissivity(lambda_em,self%item(i)%a_dot)
          
          ! scattering source term
          if (associated(self%item(i)%particle_ptr%lambda_array)) then
          
-            j_value=j_value+self%item(i)%particle_ptr%a_dot_scatter(lambda_em)*self%item(i)%f_sub*0.25_rel_kind/pi
+            j_value=j_value+self%item(i)%particle_ptr%a_dot_scatter(lambda_em)/(4._rel_kind*pi)
          
          end if
          
          ! add source term
-         i_value=i_value+j_value*(1._rel_kind-exp(-kappa_ext*self%item(i)%sigma))/kappa_ext
+         i_value=i_value+j_value*(1._rel_kind-exp(-kappa_ext*self%item(i)%sigma*self%item(i)%f_sub))/kappa_ext
          
       end do
       
