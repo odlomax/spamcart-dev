@@ -48,6 +48,7 @@ module m_options
       logical(kind=log_kind) :: sim_mrw                                       ! use modified random walk for optically thick regions
       real(kind=rel_kind) :: sim_mrw_gamma                                    ! mrw gamma variable
       integer(kind=int_kind) :: sim_n_mrw                                     ! number of mrw lookup table points
+      integer(kind=int_kind) :: sim_random_seed                               ! simulation random seed (0 uses random operating system data)
       
       ! dust params
       real(kind=rel_kind) :: dust_t_min                                       ! minimum dust temperature
@@ -116,7 +117,7 @@ module m_options
       ! variable declaration
       integer(kind=int_kind) :: read_status                                         ! read status variable
       integer(kind=int_kind) :: i_hash                                              ! index of hash character
-      integer(kind=int_kind) :: i_equal                                             ! inde of equal sign character
+      integer(kind=int_kind) :: i_equal                                             ! index of equal sign character
       character(kind=chr_kind,len=string_length) :: file_name                       ! file name
       character(kind=chr_kind,len=string_length) :: params_file_line                ! line from parameters file
       character(kind=chr_kind,len=string_length) :: format_string                   ! format string for params_file_line
@@ -139,6 +140,7 @@ module m_options
       self%sim_mrw=.true.
       self%sim_mrw_gamma=2._rel_kind
       self%sim_n_mrw=1001
+      self%sim_random_seed=1
       
       
       ! dust table parameters
@@ -281,6 +283,9 @@ module m_options
                   
                case ("sim_n_mrw")
                   read(param_value,*) self%sim_n_mrw
+                  
+               case ("sim_random_seed")
+                  read(param_value,*) self%sim_random_seed
                
                case ("dust_t_min")
                   read(param_value,*) self%dust_t_min
@@ -407,14 +412,11 @@ module m_options
       
       end do
       
-      ! sort out conflicts
-      if (self%sim_n_it==0) self%sph_scattered_light=.false.
+      ! close params file
+      close(1)
       
       ! make sure directory exists for file output
       call execute_command_line("mkdir "//trim(self%sim_id))
-      
-      ! close params file
-      close(1)
    
    end subroutine
    

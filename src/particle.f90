@@ -138,11 +138,19 @@ module m_particle
       real(kind=rel_kind),intent(in) :: sub_a_dot_min ! minimum dust sublimation temperature
       real(kind=rel_kind),intent(in) :: sub_a_dot_max ! maximum dust sublimation temperature
       
+      ! variable declarations
+      real(kind=rel_kind) :: mu                    ! log mean
+      real(kind=rel_kind) :: sigma                 ! log stdv
+      
+      ! calculate peak and width of dist
+      mu=0.5_rel_kind*(log(sub_a_dot_max)+log(sub_a_dot_min))
+      sigma=0.5_rel_kind*(log(sub_a_dot_max)-log(sub_a_dot_min))
+      
+            
       if (associated(self%a_dot_scatter_array)) self%a_dot_scatter_array=0._rel_kind
       
       ! vary f_sub smoothly between very small number and 1
-      self%f_sub=max(0.5_rel_kind-0.5_rel_kind*erf((self%a_dot-0.5_rel_kind*(sub_a_dot_max+sub_a_dot_min))/&
-         &(root_two*0.5_rel_kind*(sub_a_dot_max-sub_a_dot_min))),epsilon(0._rel_kind))
+      self%f_sub=max(0.5_rel_kind-0.5_rel_kind*erf((log(self%a_dot)-mu)/(root_two*sigma)),epsilon(0._rel_kind))
          
       return
    

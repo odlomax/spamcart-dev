@@ -397,9 +397,13 @@ module m_simulation
          write(1) self%particle_array(i)%rho
          write(1) self%particle_array(i)%a_dot
          write(1) self%particle_array(i)%f_sub
-         write(1) size(self%particle_array(i)%lambda_array,kind=int_kind)
-         write(1) self%particle_array(i)%lambda_array
-         write(1) self%particle_array(i)%a_dot_scatter_array(:)
+         if (associated(self%particle_array(i)%lambda_array)) then
+            write(1) size(self%particle_array(i)%lambda_array,kind=int_kind)
+            write(1) self%particle_array(i)%lambda_array
+            write(1) self%particle_array(i)%a_dot_scatter_array
+         else
+            write(1) 0
+         end if
          
       end do
       
@@ -439,10 +443,15 @@ module m_simulation
          read(1) self%particle_array(i)%a_dot
          read(1) self%particle_array(i)%f_sub
          read(1) n_array
-         allocate(self%particle_array(i)%lambda_array(n_array))
-         allocate(self%particle_array(i)%a_dot_scatter_array(n_array-1))
-         read(1) self%particle_array(i)%lambda_array
-         read(1) self%particle_array(i)%a_dot_scatter_array
+         if (n_array>0) then
+            allocate(self%particle_array(i)%lambda_array(n_array))
+            allocate(self%particle_array(i)%a_dot_scatter_array(n_array-1))
+            read(1) self%particle_array(i)%lambda_array
+            read(1) self%particle_array(i)%a_dot_scatter_array
+         else
+            self%particle_array(i)%lambda_array=>null()
+            self%particle_array(i)%a_dot_scatter_array=>null()
+         end if
          
          ! calculate some derived quantities
          self%particle_array(i)%inv_h=1._rel_kind/self%particle_array(i)%h

@@ -33,6 +33,8 @@ program p_main
    type(options) :: sim_params                                 ! parameters object
    
    integer(kind=int_kind) :: i                                 ! counter
+   integer(kind=int_kind) :: seed_size                         ! size of random seed
+   integer(kind=int_kind),allocatable :: seed_array(:)         ! random seed array
    character(kind=chr_kind,len=string_length) :: params_file   ! parameters file
    
    ! get parameters file, if present
@@ -40,6 +42,19 @@ program p_main
    
    ! initialise parameters
    call sim_params%initialise(params_file)
+   
+   
+   ! set up random seed
+   if (sim_params%sim_random_seed==0) then
+      ! use random OS data to seed random numbers
+      call random_seed()
+   else
+      ! user defined seed
+      call random_seed(size=seed_size)
+      allocate(seed_array(seed_size))
+      seed_array=sim_params%sim_random_seed
+      call random_seed(put=seed_array)
+   end if
    
    ! initialise simulation
    call mcrt_sim%initialise(sim_params)
