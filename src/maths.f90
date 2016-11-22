@@ -38,6 +38,11 @@ module m_maths
       procedure :: quicksort_2
    end interface
    
+   interface swap
+      procedure :: swap_real
+      procedure :: swap_integer
+   end interface
+   
    interface lerp
       procedure :: lerp_1
       procedure :: lerp_2
@@ -607,9 +612,7 @@ module m_maths
       end do
       
       ! normalise bins
-      forall (i=1:size(hist))
-         hist(i)=hist(i)/(real(size(values),rel_kind)*(bins(i+1)-bins(i)))
-      end forall
+      hist=hist/(real(size(values),rel_kind)*(bins(2:)-bins(:size(bins-1))))
    
       return
    
@@ -631,10 +634,7 @@ module m_maths
       real(kind=rel_kind) :: dx                       ! x incriment
       
       dx=(x_max-x_min)/real(n_x-1,rel_kind)
-      
-      forall (i=1:n_x)
-         x(i)=x_min+real(i-1,rel_kind)*dx
-      end forall
+      x=(/(x_min+real(i-1,rel_kind)*dx,i=1,n_x)/)
    
       return
    
@@ -661,10 +661,7 @@ module m_maths
       log_x_max=log(x_max)
       
       dlog_x=(log_x_max-log_x_min)/real(n_x-1,rel_kind)
-      
-      forall (i=1:n_x)
-         x(i)=exp(log_x_min+real(i-1,rel_kind)*dlog_x)
-      end forall
+      x=(/(exp(log_x_min+real(i-1,rel_kind)*dlog_x),i=1,n_x)/)
    
       return 
    
@@ -792,9 +789,7 @@ module m_maths
       temp_array=array
    
       ! initialise ranking
-      do i=1,size(indices)
-         indices(i)=i
-      end do
+      indices=(/(i,i=1,size(indices))/)
       
       call quicksort(temp_array,indices)
       
@@ -802,7 +797,7 @@ module m_maths
    
    end function
    
-   ! quick sort alorithm
+   ! quick sort algorithm
    pure recursive subroutine quicksort_1(array)
 
       !argument declarations
@@ -812,7 +807,6 @@ module m_maths
       integer(kind=int_kind) :: i                      !counter
       integer(kind=int_kind) :: n                      !size of array
       integer(kind=int_kind) :: pivot                  !pivot index
-      real(kind=rel_kind) :: temp                      !temporary element
       
       !Quicksort algorithm
       
@@ -824,9 +818,7 @@ module m_maths
       pivot=1+(n-1)/2
       
       !move pivot to end of array
-      temp=array(pivot)
-      array(pivot)=array(n)
-      array(n)=temp
+      call swap(array(pivot),array(n))
       
       !loop over array and place elements
       !lower than the pivot value left of pivot
@@ -834,28 +826,24 @@ module m_maths
       do i=1,n-1
       
          if(array(i)<=array(n)) then
-            temp=array(pivot)
-            array(pivot)=array(i)
-            array(i)=temp
+            call swap(array(pivot),array(i))
             pivot=pivot+1
          end if
       
       end do
       
       !move pivot back from end of array
-      temp=array(pivot)
-      array(pivot)=array(n)
-      array(n)=temp
+      call swap(array(pivot),array(n))
       
       !sort the array slices either side of pivot
-      call quicksort(array(1:pivot-1))
-      call quicksort(array(pivot+1:n))
+      call quicksort(array(:pivot-1))
+      call quicksort(array(pivot+1:))
          
       return
 
    end subroutine
    
-   ! quick sort alorithm
+   ! quick sort algorithm
    ! also maintains list of original indices
    pure recursive subroutine quicksort_2(array,indices)
 
@@ -867,8 +855,6 @@ module m_maths
       integer(kind=int_kind) :: i                      !counter
       integer(kind=int_kind) :: n                      !size of array
       integer(kind=int_kind) :: pivot                  !pivot index
-      integer(kind=int_kind) :: temp_i                 !temporary index
-      real(kind=rel_kind) :: temp_r                    !temporary element
       
       
       !Quicksort algorithm
@@ -881,12 +867,8 @@ module m_maths
       pivot=1+(n-1)/2
       
       !move pivot to end of array
-      temp_r=array(pivot)
-      array(pivot)=array(n)
-      array(n)=temp_r
-      temp_i=indices(pivot)
-      indices(pivot)=indices(n)
-      indices(n)=temp_i
+      call swap(array(pivot),array(n))
+      call swap(indices(pivot),indices(n))
       
       !loop over array and place elements
       !lower than the pivot value left of pivot
@@ -894,31 +876,57 @@ module m_maths
       do i=1,n-1
       
          if(array(i)<=array(n)) then
-            temp_r=array(pivot)
-            array(pivot)=array(i)
-            array(i)=temp_r
-            temp_i=indices(pivot)
-            indices(pivot)=indices(i)
-            indices(i)=temp_i
+            call swap(array(pivot),array(i))
+            call swap(indices(pivot),indices(i))
             pivot=pivot+1
          end if
       
       end do
       
       !move pivot back from end of array
-      temp_r=array(pivot)
-      array(pivot)=array(n)
-      array(n)=temp_r
-      temp_i=indices(pivot)
-      indices(pivot)=indices(n)
-      indices(n)=temp_i
+      call swap(array(pivot),array(n))
+      call swap(indices(pivot),indices(n))
       
       !sort the array slices either side of pivot
-      call quicksort(array(1:pivot-1),indices(1:pivot-1))
-      call quicksort(array(pivot+1:n),indices(pivot+1:n))
+      call quicksort(array(:pivot-1),indices(:pivot-1))
+      call quicksort(array(pivot+1:),indices(pivot+1:))
          
       return
 
+   end subroutine
+   
+   pure subroutine swap_real(a,b)
+   
+      ! argument declarations
+      real(kind=rel_kind),intent(inout) :: a
+      real(kind=rel_kind),intent(inout) :: b
+      
+      ! variable declarations
+      real(kind=rel_kind) :: temp
+      
+      temp=a
+      a=b
+      b=temp
+      
+      return
+   
+   end subroutine
+   
+   pure subroutine swap_integer(a,b)
+   
+      ! argument declarations
+      integer(kind=int_kind),intent(inout) :: a
+      integer(kind=int_kind),intent(inout) :: b
+      
+      ! variable declarations
+      integer(kind=int_kind) :: temp
+      
+      temp=a
+      a=b
+      b=temp
+      
+      return
+   
    end subroutine
    
    pure function rotate_vector_3d(x,u,theta) result(x_new)

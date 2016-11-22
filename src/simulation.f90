@@ -361,8 +361,10 @@ module m_simulation
       end if
       
       write(*,"(A)") "write out datacube"
-      call  write_out_datacube_3d(self%intensity_cube%x,self%intensity_cube%y,self%intensity_cube%lambda,&
-         &self%intensity_cube%i_lambda,self%intensity_cube%sigma,self%sim_params%sim_id)
+!       call  write_out_datacube_3d(self%intensity_cube%x,self%intensity_cube%y,self%intensity_cube%lambda,&
+!          &self%intensity_cube%i_lambda,self%intensity_cube%sigma,self%sim_params%sim_id)
+
+      call self%intensity_cube%write_out(self%sim_params%sim_id)
       
       return
    
