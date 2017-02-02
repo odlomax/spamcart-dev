@@ -56,6 +56,7 @@ module m_image_tree_node
       integer(kind=int_kind) :: max_level                      ! maximum level of tree
       real(kind=rel_kind) :: sigma                             ! column density
       real(kind=rel_kind),allocatable :: i_lambda(:)           ! intensity array
+      real(kind=rel_kind),allocatable :: j_lambda(:)           ! intensity array
       type(proj_particle),pointer,contiguous :: particle_array(:) ! particle array
       type(image_tree_node),pointer,contiguous :: children(:)  ! child node array
       
@@ -150,6 +151,7 @@ module m_image_tree_node
       integer(kind=int_kind) :: i                               ! counter
       
       if (allocated(self%i_lambda)) deallocate(self%i_lambda)
+      if (allocated(self%j_lambda)) deallocate(self%j_lambda)
       
       if (associated(self%children)) then
       
@@ -195,36 +197,43 @@ module m_image_tree_node
    end function
    
    ! set assign i_lambda array to all leaves in tree
-   pure recursive subroutine set_leaf_i_lambda(self,i_lambda,sigma)
+   pure recursive subroutine set_leaf_i_lambda(self,i_lambda,j_lambda,sigma)
    
       ! argument declarations
       class(image_tree_node),intent(inout) :: self          ! quadtree node
       real(kind=rel_kind),intent(in),contiguous :: i_lambda(:,:)  ! i_lambda array. second dimension must equal self%n_leaf
+      real(kind=rel_kind),intent(in),contiguous :: j_lambda(:,:)  ! j_lambda_array
       real(kind=rel_kind),intent(in),contiguous :: sigma(:)       ! column density array
       
       ! variable declarations
       integer(kind=int_kind) :: i,j                         ! counter
       
       allocate(self%i_lambda(size(i_lambda,1)))
+      allocate(self%j_lambda(size(j_lambda,1)))
       
       if (associated(self%children)) then
       
          ! recurse down tree and average i_lambda over children cells
          j=1
          self%i_lambda=0._rel_kind
+         self%j_lambda=0._rel_kind
          self%sigma=0._rel_kind
          do i=1,size(self%children)
-            call self%children(i)%set_leaf_i_lambda(i_lambda(:,j:j+self%children(i)%n_leaf-1),sigma(j:j+self%children(i)%n_leaf-1))
+            call self%children(i)%set_leaf_i_lambda(i_lambda(:,j:j+self%children(i)%n_leaf-1),&
+               &j_lambda(:,j:j+self%children(i)%n_leaf-1),sigma(j:j+self%children(i)%n_leaf-1))
             j=j+self%children(i)%n_leaf
             self%i_lambda=self%i_lambda+self%children(i)%i_lambda
+            self%j_lambda=self%j_lambda+self%children(i)%j_lambda
             self%sigma=self%sigma+self%children(i)%sigma
          end do
          self%i_lambda=self%i_lambda/real(size(self%children),rel_kind)
+         self%j_lambda=self%j_lambda/real(size(self%children),rel_kind)
          self%sigma=self%sigma/real(size(self%children),rel_kind)
       
       else
       
          self%i_lambda=i_lambda(:,1)
+         self%j_lambda=j_lambda(:,1)
          self%sigma=sigma(1)
       
       end if
@@ -293,13 +302,16 @@ module m_image_tree_node
       if (associated(self%children)) then
       
          self%i_lambda=0._rel_kind
+         self%j_lambda=0._rel_kind
          do i=1,size(self%children)
          
             call self%children(i)%rebuild_tree()
             self%i_lambda=self%i_lambda+self%children(i)%i_lambda
+            self%j_lambda=self%j_lambda+self%children(i)%j_lambda
          
          end do
          self%i_lambda=self%i_lambda/real(size(self%children),rel_kind)
+         self%j_lambda=self%j_lambda/real(size(self%children),rel_kind)
       
       end if
       
@@ -325,8 +337,8 @@ module m_image_tree_node
       
       else
       
-         write(format_string,"(A,I0,A)") "(",size(self%aabb)+1+size(self%i_lambda),"(E25.17))"
-         write(file_id,trim(format_string)) self%aabb,self%sigma,self%i_lambda
+         write(format_string,"(A,I0,A)") "(",size(self%aabb)+1+2*size(self%i_lambda),"(E25.17))"
+         write(file_id,trim(format_string)) self%aabb,self%sigma,self%i_lambda,self%j_lambda
       
       end if 
       

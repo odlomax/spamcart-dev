@@ -51,6 +51,7 @@ module m_binary_tree_node
       procedure,non_overridable :: destroy
       procedure,non_overridable :: stock
       procedure,non_overridable :: sph_gather_density
+      procedure,non_overridable :: sph_gather_f_sub
       procedure,non_overridable :: sph_scatter
       procedure,non_overridable :: sph_inv_mfp
       procedure,non_overridable :: ray_aabb_intersection
@@ -136,7 +137,7 @@ module m_binary_tree_node
       ! variable declarations
       integer(kind=int_kind) :: i                               ! counter
       
-      ! check if node has childrean
+      ! check if node has children
       if (associated(self%left_node)) then
       
          call self%left_node%stock(sph_kernel)
@@ -197,6 +198,49 @@ module m_binary_tree_node
                   
             end do
          
+         end if
+         
+      end if
+      
+      return
+   
+   end function
+   
+   ! peform sph gather to calculate smoothed sublimation fraction
+   pure recursive function sph_gather_f_sub(self,sph_kernel,sph_particle,a_dot_sub) result (f_sub)
+   
+      ! argument declarations
+      class(binary_tree_node),intent(in) :: self                ! binary tree node object
+      class(kernel),intent(in) :: sph_kernel                    ! sph kernel object
+      type(particle),intent(in) :: sph_particle                 ! sph particle
+      real(kind=rel_kind),intent(in) :: a_dot_sub               ! sublimation energy absorption rate 
+      
+      ! result declaration
+      real(kind=rel_kind) :: f_sub                              ! sublimation fraction
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i                               ! counter
+      
+      f_sub=0._rel_kind
+      
+      ! check if virtual particle overlaps aabb of node
+      if (all(sph_particle%r+sph_particle%h*sph_kernel%r_support>self%aabb(:,1).and.&
+         sph_particle%r-sph_particle%h*sph_kernel%r_support<self%aabb(:,2))) then
+      
+         if (associated(self%left_node)) then
+         
+            ! recurse down tree
+            f_sub=f_sub+self%left_node%sph_gather_f_sub(sph_kernel,sph_particle,a_dot_sub)
+            f_sub=f_sub+self%right_node%sph_gather_f_sub(sph_kernel,sph_particle,a_dot_sub)
+            
+         else
+         
+            ! calculate quantities from leaf
+            do i=1,size(self%particle_array)
+               f_sub=f_sub+merge(1._rel_kind,epsilon(0._rel_kind),self%particle_array(i)%a_dot<a_dot_sub)*&
+                  &self%particle_array(i)%m*sph_kernel%w(norm2(sph_particle%r-self%particle_array(i)%r)/sph_particle%h)/&
+                  &(sph_particle%h**n_dim*sph_particle%rho)
+            end do
          end if
          
       end if

@@ -45,8 +45,8 @@ module m_source_point_bb
    contains
       
    pure subroutine initialise(self,position,velocity,&
-         &temperature,luminosity,wavelength_min,wavelength_max,n_wavelength,&
-         &radius,dilution,gal_r,gal_z,g_0,add_cmb)
+      &temperature,luminosity,wavelength_min,wavelength_max,n_wavelength,&
+      &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity)
    
       ! argument declarations
       class(source_point_bb),intent(inout) :: self                ! blackbody point source object
@@ -63,6 +63,9 @@ module m_source_point_bb
       real(kind=rel_kind),intent(in),optional :: gal_z            ! galactic height
       real(kind=rel_kind),intent(in),optional :: g_0              ! optional g_0 normalisation
       logical(kind=log_kind),intent(in),optional :: add_cmb       ! add cosmic microwave background
+      real(kind=rel_kind),intent(in),optional :: mass             ! mass of star
+      real(kind=rel_kind),intent(in),optional :: age              ! age of star
+      real(kind=rel_kind),intent(in),optional :: metallicity      ! metallicity of star
       
       
       allocate(self%wavelength_array(n_wavelength))

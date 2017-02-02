@@ -89,6 +89,7 @@ module m_ray
       procedure,non_overridable :: ray_trace_initialise
       procedure,non_overridable :: ray_trace_i
       procedure,non_overridable :: ray_trace_tau
+      procedure,non_overridable :: ray_trace_j
       procedure,non_overridable,private :: v_sph
       procedure,non_overridable,private :: a_dot_sph
       procedure,non_overridable,private :: a_sph
@@ -165,7 +166,7 @@ module m_ray
    end subroutine
    
    ! follow a luminosity packet
-   subroutine follow(self,origin_in,direction_in,v_em_in,lambda_em_in,l_chunk,use_mrw,mrw_gamma)
+   subroutine follow(self,origin_in,direction_in,v_em_in,lambda_em_in,l_chunk,use_mrw,mrw_gamma,n_tau)
    
       ! argument declarations
       class(ray),intent(inout) :: self                  ! ray object
@@ -176,6 +177,7 @@ module m_ray
       real(kind=rel_kind),intent(in) :: l_chunk         ! chunk of luminosity
       logical(kind=log_kind),intent(in) :: use_mrw      ! use modified random walk
       real(kind=rel_kind),intent(in) :: mrw_gamma       ! mrw gamma parameter
+      real(kind=rel_kind),intent(inout) :: n_tau        ! number of optical depths travelled (initialised before sub. call)
       
       ! variable declarations
       integer(kind=int_kind) :: i,j                     ! counter
@@ -208,6 +210,7 @@ module m_ray
       real(kind=rel_kind) :: mrw_tau                    ! escape optical depth through mrw sphere
       real(kind=rel_kind) :: planck_abs                 ! planck mean absorption
       real(kind=rel_kind) :: planck_sca                 ! planck mean scatter
+      real(kind=rel_kind) :: tau_chunk                  ! partial optical depth chunk
       
       ! set input variables
       origin=origin_in
@@ -282,8 +285,11 @@ module m_ray
                
                   planck_abs=self%dust_prop%mrw_planck_abs(self%item(i)%a_dot)*self%item(i)%f_sub
             
-                  call atomic_real_add(self%item(i)%particle_ptr%a_dot_new,&
-                     self%l_chunk*mrw_distance*self%item(i)%sigma*planck_abs/self%path%length)
+                  tau_chunk=mrw_distance*self%item(i)%sigma*planck_abs/self%path%length
+                  call atomic_real_add(self%item(i)%particle_ptr%a_dot_new,self%l_chunk*tau_chunk)
+                     
+                  ! update total optical depth
+                  n_tau=n_tau+tau_chunk
             
                   ! check if scattered light array exists
                   if (associated(self%item(i)%particle_ptr%a_dot_scatter_array)) then
@@ -294,8 +300,12 @@ module m_ray
                            &self%item(i)%particle_ptr%lambda_array(j),self%item(i)%particle_ptr%lambda_array(j+1))*&
                            &self%item(i)%f_sub
                         
+                        tau_chunk=mrw_distance*self%item(i)%sigma*planck_sca/self%path%length
                         call atomic_real_add(self%item(i)%particle_ptr%a_dot_scatter_array(j),&
-                           &self%l_chunk*mrw_distance*self%item(i)%sigma*planck_sca/self%path%length)
+                           &self%l_chunk*tau_chunk)
+                           
+                        ! update total optical depth
+                        n_tau=n_tau+tau_chunk
                   
                      end do
                
@@ -354,6 +364,7 @@ module m_ray
             tau=tau-tau_est
             origin=origin+direction*length
             call self%update_absorption_rate()
+            n_tau=n_tau+tau_est
             extend_ray=.true.
          
          else
@@ -401,6 +412,7 @@ module m_ray
             end do
             
             call self%update_absorption_rate()
+            n_tau=n_tau+tau_1+tau
             
             ! set new properties
             
@@ -551,6 +563,32 @@ module m_ray
       do i=1,self%n_item
          lambda_em=lambda_ob*(dot_product(v_ob-self%item(i)%v,self%path%direction)/c_light+1._rel_kind)
          tau_value=tau_value+self%item(i)%sigma*self%dust_prop%dust_mass_ext(lambda_em)*self%item(i)%f_sub
+      end do
+   
+      return
+   
+   end function
+   
+   ! ray trace integrated  emissivity (i.e. no extinction)
+   pure function ray_trace_j(self,lambda_ob,v_ob) result (j_value)
+   
+      ! argument declarations
+      class(ray),intent(in) :: self                      ! ray object      
+      real(kind=rel_kind),intent(in) :: lambda_ob        ! observer rest frame wavelength
+      real(kind=rel_kind),intent(in) :: v_ob(n_dim)      ! observer rest frame velocity
+      
+      ! result declaration
+      real(kind=rel_kind) :: j_value                     ! integrated emissivity from infinity to position
+      
+      ! variable declaration
+      integer(kind=int_kind) :: i                        ! counter
+      real(kind=rel_kind) :: lambda_em                   ! wavelength in emission rest frame
+      
+      ! tau value
+      j_value=0._rel_kind
+      do i=1,self%n_item
+         lambda_em=lambda_ob*(dot_product(v_ob-self%item(i)%v,self%path%direction)/c_light+1._rel_kind)
+         j_value=j_value+self%item(i)%sigma*self%dust_prop%mono_mass_emissivity(lambda_em,self%item(i)%a_dot)*self%item(i)%f_sub
       end do
    
       return

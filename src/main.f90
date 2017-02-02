@@ -65,6 +65,8 @@ program p_main
    end do
    
    ! make datacube
+   if (sim_params%datacube_source_extract)&
+      &call mcrt_sim%source_extract(sim_params%datacube_source_extract_centre,sim_params%datacube_source_extract_radius) 
    if (sim_params%datacube_make) call mcrt_sim%make_datacube()
 
 end program

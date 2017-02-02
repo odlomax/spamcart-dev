@@ -50,6 +50,7 @@ module m_datacube
       real(kind=rel_kind),allocatable :: i_lambda(:,:,:)    ! flux density
       real(kind=rel_kind),allocatable :: sigma(:,:)         ! column density
       real(kind=rel_kind),allocatable :: ps_l_lambda(:,:,:) ! point source luminosity (unattuenuated and attenuated)
+      real(kind=rel_kind),allocatable :: bg_i_lambda(:)     ! background intensity
       
       contains
       
@@ -93,7 +94,6 @@ module m_datacube
       integer(kind=int_kind) :: dc_max_level                ! datacube max level
       real(kind=rel_kind) :: dx                             ! x increment
       real(kind=rel_kind) :: dy                             ! y increment
-      real(kind=rel_kind) :: i_bg                           ! background intensity
       real(kind=rel_kind) :: img_x_unit(n_dim)              ! image x unit vector in 3D space (width)
       real(kind=rel_kind) :: img_y_unit(n_dim)              ! image y unit vector in 3D space (height)
       real(kind=rel_kind) :: img_z_unit(n_dim)              ! image z unit vector in 3D space (depth)
@@ -104,6 +104,7 @@ module m_datacube
       real(kind=rel_kind) :: v_rec                          ! recession velocity of source
       real(kind=rel_kind),allocatable :: aabb_array(:,:,:)  ! array of 2d axis aligned bounding boxes
       real(kind=rel_kind),allocatable :: i_lambda_array(:,:)! array of intensities
+      real(kind=rel_kind),allocatable :: j_lambda_array(:,:)! dust emissivity array
       real(kind=rel_kind),allocatable :: sigma_array(:)     ! array of column densities
       
       ! set number of pixels (nearest power of 2)
@@ -117,6 +118,7 @@ module m_datacube
       allocate(self%sigma(size(self%x),size(self%y)))
       allocate(self%image_tree_root)
       allocate(self%image_tree_particle_array(size(sph_tree%particle_array)))
+      allocate(self%bg_i_lambda(size(lambda_array)))
       if (present(point_sources)) allocate(self%ps_l_lambda(2,size(self%lambda),size(point_sources)))
       
       ! set up coordinates
@@ -165,15 +167,17 @@ module m_datacube
       call self%image_tree_root%initialise(self%image_tree_particle_array,reshape((/x_min,y_min,x_max,y_max/),(/2,2/)),node_id)
       allocate(aabb_array(2,2,self%image_tree_root%n_leaf))
       allocate(i_lambda_array(size(lambda_array),self%image_tree_root%n_leaf))
+      allocate(j_lambda_array(size(lambda_array),self%image_tree_root%n_leaf))
       allocate(sigma_array(self%image_tree_root%n_leaf))
       aabb_array=self%image_tree_root%get_leaf_aabb()
 
-                  
-      ! set recession velocity of source
+
+      ! set background intensity
       if (present(background)) then
          v_rec=dot_product(background%velocity-v_ob,-img_z_unit)
+         self%bg_i_lambda=background%intensity(self%lambda,v_rec)
       else
-         v_rec=0._rel_kind
+         self%bg_i_lambda=0._rel_kind
       end if
       
       ! set up variables for multi-threading
@@ -183,33 +187,27 @@ module m_datacube
          call sph_ray(i)%initialise(sph_kernel,sph_tree,dust_prop)
       end do
       
-      !$omp parallel num_threads(num_threads) default(shared) private(i,j,pix_position,i_bg,thread_num)
-         thread_num=omp_get_thread_num()+1
+      !$omp parallel num_threads(num_threads) default(shared) private(i,j,pix_position,thread_num)
          !$omp do schedule(dynamic)
-         
             do j=1,self%image_tree_root%n_leaf
             
-            pix_position=sph_tree%com+0.5_rel_kind*sph_tree%max_length*img_z_unit+&
-               &0.5_rel_kind*(aabb_array(1,2,j)+aabb_array(1,1,j))*img_x_unit+&
-               &0.5_rel_kind*(aabb_array(2,2,j)+aabb_array(2,1,j))*img_y_unit
-            call sph_ray(thread_num)%ray_trace_initialise(pix_position,-1._rel_kind*img_z_unit)
+               thread_num=omp_get_thread_num()+1
             
-            do concurrent (i=1:size(self%lambda))
-               
-               ! set background intensity
-               if (present(background)) then
-                  i_bg=background%intensity(self%lambda(i),v_rec)
-               else
-                  i_bg=0._rel_kind
-               end if
+               pix_position=sph_tree%com+0.5_rel_kind*sph_tree%max_length*img_z_unit+&
+                  &0.5_rel_kind*(aabb_array(1,2,j)+aabb_array(1,1,j))*img_x_unit+&
+                  &0.5_rel_kind*(aabb_array(2,2,j)+aabb_array(2,1,j))*img_y_unit
+               call sph_ray(thread_num)%ray_trace_initialise(pix_position,-1._rel_kind*img_z_unit)
             
-               i_lambda_array(i,j)=sph_ray(thread_num)%ray_trace_i(self%lambda(i),v_ob,i_bg)
+               do i=1,size(self%lambda)
             
-            end do
+                  i_lambda_array(i,j)=sph_ray(thread_num)%ray_trace_i(self%lambda(i),v_ob,self%bg_i_lambda(i))
+                  j_lambda_array(i,j)=sph_ray(thread_num)%ray_trace_j(self%lambda(i),v_ob)+self%bg_i_lambda(i)
             
-            ! set column density
-            sigma_array(j)=sum(sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%sigma*&
-               &sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%f_sub)
+               end do
+            
+               ! set column density
+               sigma_array(j)=sum(sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%sigma*&
+                  &sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%f_sub)
              
             end do
       
@@ -217,7 +215,7 @@ module m_datacube
       !$omp end parallel
       
       ! copy i_lambda_array and sigma_array to tree
-      call self%image_tree_root%set_leaf_i_lambda(i_lambda_array,sigma_array)     
+      call self%image_tree_root%set_leaf_i_lambda(i_lambda_array,j_lambda_array,sigma_array)     
       
       
       ! calculate point source luminosities
@@ -246,7 +244,9 @@ module m_datacube
                temp_node=>self%image_tree_root%get_node_pointer((/x_img,y_img/))
                if (associated(temp_node)) then
                   temp_node%i_lambda(i)=temp_node%i_lambda(i)+self%ps_l_lambda(2,i,j)/&
-                     &(pi*product(temp_node%aabb(:,2)-temp_node%aabb(:,1)))
+                     &(4._rel_kind*pi*product(temp_node%aabb(:,2)-temp_node%aabb(:,1)))
+                  temp_node%j_lambda(i)=temp_node%j_lambda(i)+self%ps_l_lambda(1,i,j)/&
+                     &(4._rel_kind*pi*product(temp_node%aabb(:,2)-temp_node%aabb(:,1)))
                end if
                
             end do
@@ -379,6 +379,10 @@ module m_datacube
       do i=1,size(self%lambda)
          write(1,"(A,I0,A,E10.4,A)") "# ",i+5," I_lambda=",self%lambda(i)," micron (erg s^-1 sr^-1 cm^-2 micron^-1)"
       end do
+      do i=1,size(self%lambda)
+         write(1,"(A,I0,A,E10.4,A)") "# ",i+5+size(self%lambda),&
+            &" J_lambda=",self%lambda(i)," micron (erg s^-1 sr^-1 cm^-2 micron^-1)"
+      end do
       write(1,*)
       call self%image_tree_root%write_leaf(1)
       
@@ -412,16 +416,18 @@ module m_datacube
       else
          n_ps=0
       end if
-      write(format_string,"(A,I0,A)") "(",2+2*(n_ps+1),"(E25.17))"
+      write(format_string,"(A,I0,A)") "(",4+2*(n_ps+1),"(E25.17))"
       
       write(1,"(A)") "# 1 lambda (micron)"
       write(1,"(A)") "# 2 F_lambda 4 pi D^2 [full] (erg s^-1 micron^-1)"
+      write(1,"(A)") "# 3 F_lambda 4 pi D^2 [full] (erg s^-1 micron^-1) [no extinction]"
+      write(1,"(A)") "# 4 F_lambda 4 pi D^2 [background] (erg s^-1 micron^-1)"
       if (n_ps>0) then
-         write(1,"(A)") "# 3 F_lambda 4 pi D^2 [total point sources] (erg s^-1 micron^-1) [no extinction]"
-         write(1,"(A)") "# 4 F_lamdba 4 pi D^2 [total point sources] (erg s^-1 micron^-1)"
+         write(1,"(A)") "# 5 F_lambda 4 pi D^2 [total point sources] (erg s^-1 micron^-1) [no extinction]"
+         write(1,"(A)") "# 6 F_lamdba 4 pi D^2 [total point sources] (erg s^-1 micron^-1)"
          do i=1,n_ps
-            write(1,"(A,I0,A,I0,A)") "# ",3+2*i," F_lambda 4 pi D^2 [point source ",i,"] (erg s^-1 micron^-1) [no extinction]"
-            write(1,"(A,I0,A,I0,A)") "# ",4+2*i," F_lambda 4 pi D^2 [point source ",i,"] (erg s^-1 micron^-1)"
+            write(1,"(A,I0,A,I0,A)") "# ",5+2*i," F_lambda 4 pi D^2 [point source ",i,"] (erg s^-1 micron^-1) [no extinction]"
+            write(1,"(A,I0,A,I0,A)") "# ",6+2*i," F_lambda 4 pi D^2 [point source ",i,"] (erg s^-1 micron^-1)"
          end do
       end if
       write(1,*)
@@ -429,15 +435,28 @@ module m_datacube
          if (n_ps>0) then
             write(1,trim(format_string)) self%lambda(i),self%image_tree_root%i_lambda(i)*4._rel_kind*pi*&
                &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1)),&
+               &self%image_tree_root%j_lambda(i)*4._rel_kind*pi*&
+               &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1)),&
+               &self%bg_i_lambda(i)*4._rel_kind*pi*&
+               &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1)),&
                &sum(self%ps_l_lambda(1,i,:)),sum(self%ps_l_lambda(2,i,:)),&
                &pack(self%ps_l_lambda(:,i,:),.true.)
          else
-            write(1,trim(format_string)) self%lambda(i), self%image_tree_root%i_lambda(i)*4._rel_kind*pi*&
+            write(1,trim(format_string)) self%lambda(i),self%image_tree_root%i_lambda(i)*4._rel_kind*pi*&
+               &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1)),&
+               &self%image_tree_root%j_lambda(i)*4._rel_kind*pi*&
+               &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1)),&
+               &self%bg_i_lambda(i)*4._rel_kind*pi*&
                &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1))
          end if
       end do
          
       close(1)
+      
+      write(*,"(A,E25.17)") "apparent luminosity: ",trapz_intgr(self%lambda,self%image_tree_root%i_lambda)*4._rel_kind*pi*&
+         &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1))                 
+      write(*,"(A,E25.17)") "emission luminosity: ",trapz_intgr(self%lambda,self%image_tree_root%j_lambda)*4._rel_kind*pi*&
+         &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1))
       
       return
    
@@ -453,6 +472,7 @@ module m_datacube
       deallocate(self%lambda)
       deallocate(self%i_lambda)
       deallocate(self%sigma)
+      deallocate(self%bg_i_lambda)
       if (allocated(self%ps_l_lambda)) deallocate(self%ps_l_lambda)
       call self%image_tree_root%destroy()
       

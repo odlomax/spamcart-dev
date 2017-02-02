@@ -216,16 +216,30 @@ module m_maths
       ! variable declaration
       real(kind=rel_kind) :: lambda_si                        ! wavelength in m
       real(kind=rel_kind) :: exp_part                   ! exponential part
+      real(kind=rel_kind) :: denominator
       
       lambda_si=1e-6_rel_kind*lambda
       exp_part=exp(h_planck*c_light/(lambda_si*k_boltz*t))
    
       if (exp_part<huge(0._rel_kind)) then
          ! calculate planck function
-         b=2._rel_kind*h_planck*c_light**2/&
-            (lambda_si**5*(exp_part-1._rel_kind))
+         
+         denominator=lambda_si**5*(exp_part-1._rel_kind)
+         
+         if (denominator<huge(0._rel_kind)) then
+         
+            b=2._rel_kind*h_planck*c_light**2/denominator
+            
+         else
+         
+            b=0._rel_kind
+            
+         end if
+               
       else
+      
          b=0._rel_kind
+         
       end if
          
       ! normalize to cgs
@@ -535,6 +549,26 @@ module m_maths
       
       return
       
+   end function
+   
+   ! linear interpolation (with x forced into interval)
+   elemental function lerp_forced(x,x_0,x_1,f_0,f_1) result (f)
+   
+      ! argument declarations
+      real(kind=rel_kind),intent(in) :: x                     ! value of x
+      real(kind=rel_kind),intent(in) :: x_0                   ! x interpolation points
+      real(kind=rel_kind),intent(in) :: x_1
+      real(kind=rel_kind),intent(in) :: f_0                   ! f(x) interpolation points
+      real(kind=rel_kind),intent(in) :: f_1
+      
+      ! result declaration
+      real(kind=rel_kind) :: f                                ! f(x)
+      
+      ! solve for f
+      f=f_0+(f_1-f_0)*(min(max(x,x_0),x_1)-x_0)/(x_1-x_0)
+      
+      return
+   
    end function
    
    ! inverse quadratic interpolation 

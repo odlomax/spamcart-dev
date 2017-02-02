@@ -31,6 +31,7 @@ module m_simulation
    use m_dust_d03
    use m_source
    use m_source_point_bb
+   use m_source_point_ms_star
    use m_source_external_bb
    use m_source_external_ps05
    use m_particle
@@ -68,6 +69,7 @@ module m_simulation
       procedure,non_overridable :: initialise
       procedure,non_overridable :: destroy
       procedure,non_overridable :: perform_iteration
+      procedure,non_overridable :: source_extract
       procedure,non_overridable :: make_datacube
       procedure,non_overridable :: write_particles_bin
       procedure,non_overridable :: read_particles_bin
@@ -87,10 +89,12 @@ module m_simulation
       integer(kind=int_kind) :: i,j                               ! counter
       integer(kind=int_kind) :: string_len                        ! length of string
       logical(kind=log_kind) :: h_present                         ! is smoothing length present in cloud file
-      real(kind=rel_kind),allocatable :: position(:,:)            ! particle positions
-      real(kind=rel_kind),allocatable :: mass(:)                  ! particle mass
-      real(kind=rel_kind),allocatable :: temperature(:)           ! particle temperature
-      real(kind=rel_kind),allocatable :: luminosity(:)            ! particle luminosity
+      real(kind=rel_kind),allocatable :: position(:,:)            ! particle/star positions
+      real(kind=rel_kind),allocatable :: mass(:)                  ! particle/star mass
+      real(kind=rel_kind),allocatable :: temperature(:)           ! particle/star temperature
+      real(kind=rel_kind),allocatable :: luminosity(:)            ! star luminosity
+      real(kind=rel_kind),allocatable :: age(:)                   ! star age
+      real(kind=rel_kind),allocatable :: metallicity(:)           ! star metallicity
       
       ! associate parameters
       self%sim_params=>sim_params
@@ -141,15 +145,34 @@ module m_simulation
       if (self%sim_params%point_sources) then
       
          write(*,"(A)") "read in point sources"
-         call read_in_point_sources_3d(position,luminosity,temperature,self%sim_params%sim_star_file)
-         allocate(source_point_bb::self%point_source_array(size(position,2)))
+         select case (trim(self%sim_params%point_type))
          
-         write(*,"(A)") "initialise point sources"
-         do i=1,size(self%point_source_array)
-            call self%point_source_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),temperature=temperature(i),&
-               &luminosity=luminosity(i),wavelength_min=self%sim_params%point_lambda_min,&
-               &wavelength_max=self%sim_params%point_lambda_max,n_wavelength=self%sim_params%point_n_lambda)
-         end do
+            case ("bb")
+            
+               call read_in_point_sources_3d(position,luminosity=luminosity,temperature=temperature,&
+                  &file_name=self%sim_params%sim_star_file)
+               allocate(source_point_bb::self%point_source_array(size(position,2)))
+         
+               write(*,"(A)") "initialise point sources"
+               do i=1,size(self%point_source_array)
+                  call self%point_source_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),temperature=temperature(i),&
+                     &luminosity=luminosity(i),wavelength_min=self%sim_params%point_lambda_min,&
+                     &wavelength_max=self%sim_params%point_lambda_max,n_wavelength=self%sim_params%point_n_lambda)
+               end do
+               
+            case ("ms_star")
+            
+               call read_in_point_sources_3d(position,mass=mass,age=age,metallicity=metallicity,&
+                  &file_name=self%sim_params%sim_star_file)
+               allocate(source_point_ms_star::self%point_source_array(size(position,2)))
+         
+               write(*,"(A)") "initialise point sources"
+               do i=1,size(self%point_source_array)
+                  call self%point_source_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),mass=mass(i),&
+                     &age=age(i),metallicity=metallicity(i))
+               end do
+               
+         end select
 
       else
          self%point_source_array=>null()
@@ -230,7 +253,13 @@ module m_simulation
       real(kind=rel_kind) :: position(n_dim)                      ! position vector
       real(kind=rel_kind) :: direction(n_dim)                     ! direction vector
       real(kind=rel_kind) :: wavelength                           ! wavelength
+      real(kind=rel_kind) :: tau                                  ! optical depth travelled by luminosity packet
+      real(kind=rel_kind) :: bg_mean_tau                          ! mean optical depth travelled by background packets
+      real(kind=rel_kind) :: source_luminosity                    ! total luminosity of sources
+      real(kind=rel_kind) :: packet_luminosity                    ! packet energy deposition rate
+      real(kind=rel_kind) :: particle_luminosity                  ! particle energy emission rate
       real(kind=rel_kind),allocatable :: position_array(:,:)      ! array of positions
+      real(kind=rel_kind),allocatable :: ps_mean_tau(:)           ! mean optical depth travelled by point source packets
       character(kind=chr_kind,len=string_length) :: output_file   ! output file        
       
       ! get number of threads
@@ -243,12 +272,21 @@ module m_simulation
          call self%lum_packet_array(i)%initialise(self%sph_kernel,self%sph_tree,self%dust_prop)
       end do
       
-      ! reset scattered light bins and sublimation fraction
-      call self%particle_array%reset_a_dot(4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(self%sim_params%dust_sub_t_min),&
-         &4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(self%sim_params%dust_sub_t_max))
+      ! reset scattered light bins
+      call self%particle_array%reset_a_dot()
+      
+      ! set sublimation fraction
+      do i=1,size(self%particle_array)
+      
+         self%particle_array(i)%f_sub=self%sph_tree%root_node%sph_gather_f_sub(self%sph_kernel,self%particle_array(i),&
+            4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(self%sim_params%dust_sub_t))
+      
+      end do
       
       if (associated(self%point_source_array)) then
       
+         allocate(ps_mean_tau(size(self%point_source_array)))
+         ps_mean_tau=0._rel_kind
          total_luminosity=sum(self%point_source_array%luminosity)
          
          write(*,"(A)") "follow packets from point sources"
@@ -265,22 +303,26 @@ module m_simulation
             luminosity_chunk=self%point_source_array(i)%luminosity/real(n_packets_source,rel_kind)
             k=0
       
-            !$omp parallel do num_threads(n_threads) default(shared) private(j)
+            !$omp parallel do num_threads(n_threads) default(shared) private(j,tau)
                do j=1,n_packets_source
+               
+                  tau=0._rel_kind
                   call self%lum_packet_array(omp_get_thread_num()+1)%follow(self%point_source_array(i)%position,&
                      &self%point_source_array(i)%random_direction(),self%point_source_array(i)%velocity,&
                      &self%point_source_array(i)%random_wavelength(),luminosity_chunk,&
-                     &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma)
+                     &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma,tau)
                      
                   call atomic_integer_add(k,1)
-         
-                  if (mod(k,min(1000,n_packets_source))==0) &
+                  call atomic_real_add(ps_mean_tau(i),tau )
+                           
+                  if (mod(k,min(self%sim_params%sim_n_packet_point/100,n_packets_source))==0) &
                      &write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)") &
                      &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
                      &", star ",i," of ",size(self%point_source_array),&
                      &", packet ",k," of ",n_packets_source
                end do
             !$omp end parallel do
+            ps_mean_tau(i)=ps_mean_tau(i)/real(n_packets_source,rel_kind)
                    
          end do
       
@@ -288,23 +330,27 @@ module m_simulation
       
       if (associated(self%isrf_prop)) then
       
+         bg_mean_tau=0._rel_kind
+      
          write(*,"(A)") "follow packets from external radiation field"
          luminosity_chunk=self%isrf_prop%luminosity/real(self%sim_params%sim_n_packet_external,rel_kind)
          k=0
-         !$omp parallel do num_threads(n_threads) default(shared) private(j,position,direction,wavelength)
+         !$omp parallel do num_threads(n_threads) default(shared) private(j,position,direction,wavelength,tau)
                   
             do j=1,self%sim_params%sim_n_packet_external
                position=self%isrf_prop%random_position()
                direction=self%isrf_prop%random_direction(position)
                wavelength=self%isrf_prop%random_wavelength()
+               tau=0._rel_kind
                call self%lum_packet_array(omp_get_thread_num()+1)%follow(position,&
                   &direction,self%isrf_prop%velocity,&
                   &wavelength,luminosity_chunk,&
-                  &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma)
+                  &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma,tau)
             
                call atomic_integer_add(k,1)
+               call atomic_real_add(bg_mean_tau,tau)
             
-               if (mod(k,min(1000,self%sim_params%sim_n_packet_external))==0) &
+               if (mod(k,min(self%sim_params%sim_n_packet_external/100,self%sim_params%sim_n_packet_external))==0) &
                   &write(*,"(A,I0,A,I0,A,I0,A,I0)") &
                      &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
                      &", external rad field, packet ",k," of ",self%sim_params%sim_n_packet_external
@@ -312,11 +358,51 @@ module m_simulation
             end do
                        
          !$omp end parallel do
+         bg_mean_tau=bg_mean_tau/real(self%sim_params%sim_n_packet_external,rel_kind)
+         
       
-      end if
+      end if 
       
       ! normalise absorption rate
       call self%particle_array%normalise_a()
+      
+      ! write out packet travel stats
+      if (associated(self%point_source_array)) then
+         do i=1,size(ps_mean_tau)
+            write(*,"(A,I0,A,E25.17)") "star ",i," mean escape tau: ",ps_mean_tau(i)
+         end do
+      end if
+      
+      if (associated(self%isrf_prop)) write(*,"(A,E25.17)") "external rad field escape tau:   ",bg_mean_tau      
+         
+      ! calculate packet energy deposition rate
+      source_luminosity=0._rel_kind
+      packet_luminosity=0._rel_kind
+      if (associated(self%point_source_array)) then
+         packet_luminosity=packet_luminosity+sum(self%point_source_array%luminosity*ps_mean_tau)
+         source_luminosity=source_luminosity+sum(self%point_source_array%luminosity)
+      end if
+         
+      if (associated(self%isrf_prop)) then
+         packet_luminosity=packet_luminosity+self%isrf_prop%luminosity*bg_mean_tau
+         source_luminosity=source_luminosity+self%isrf_prop%luminosity
+      end if
+      
+      ! calculate particle luminosity
+      particle_luminosity=0._rel_kind
+      do i=1,size(self%particle_array)
+         particle_luminosity=particle_luminosity+&
+            &self%particle_array(i)%m*self%particle_array(i)%f_sub*self%particle_array(i)%a_dot
+            if (associated(self%particle_array(i)%lambda_array)) particle_luminosity=particle_luminosity+&
+               &self%particle_array(i)%m*self%particle_array(i)%f_sub*&
+               &sum(self%particle_array(i)%a_dot_scatter_array*(self%particle_array(i)%lambda_array(2:)-&
+               &self%particle_array(i)%lambda_array(:size(self%particle_array(i)%lambda_array)-1)))
+      end do
+      
+      write(*,"(A,E25.17)") "source luminosity:   ",source_luminosity
+      write(*,"(A,E25.17)") "packet luminosity:   ",packet_luminosity
+      write(*,"(A,E25.17)") "particle luminosity: ",particle_luminosity
+      
       
       ! write out particles
       write(*,"(A)") "write out particles"
@@ -361,8 +447,6 @@ module m_simulation
       end if
       
       write(*,"(A)") "write out datacube"
-!       call  write_out_datacube_3d(self%intensity_cube%x,self%intensity_cube%y,self%intensity_cube%lambda,&
-!          &self%intensity_cube%i_lambda,self%intensity_cube%sigma,self%sim_params%sim_id)
 
       call self%intensity_cube%write_out(self%sim_params%sim_id)
       
@@ -466,7 +550,53 @@ module m_simulation
       
       return
    
-   end subroutine  
+   end subroutine
+   
+   ! cull particle ensemble to sphere
+   subroutine source_extract(self,centre,radius)
+   
+      ! argument declarations
+      class(simulation),intent(inout) :: self            ! simulation object
+      real(kind=rel_kind),intent(in) :: centre(n_dim)    ! source centre
+      real(kind=rel_kind),intent(in) :: radius           ! radius
+      
+      ! variable declarations
+      type(particle),pointer :: temp_particle_array(:)   ! temporary particle array
+      integer(kind=int_kind) :: i                        ! counter
+      logical(kind=log_kind) :: array_mask(size(self%particle_array))   ! true if particles are within sphere
+      
+      ! set mask
+      do i=1,size(self%particle_array)
+         array_mask(i)=sum((self%particle_array(i)%r-centre)**2)<=radius**2
+         self%particle_array(i)%r=self%particle_array(i)%r-centre
+!          if (.not.array_mask(i)) call self%particle_array(i)%destroy()
+      end do
+      
+      ! copy live particles
+      allocate(temp_particle_array(count(array_mask)))
+      
+      temp_particle_array=pack(self%particle_array,array_mask)
+      
+!       deallocate(self%particle_array)
+      self%particle_array=>temp_particle_array
+      
+      ! reset particle tree
+      call self%sph_tree%destroy()
+      call self%sph_tree%initialise(&
+         &self%particle_array,self%sph_kernel,self%sim_params%sph_eta,self%sim_params%sim_min_d,.true._log_kind)
+         
+      ! set luminosities of sources outside sphere to zero
+      do i=1,size(self%point_source_array)
+         array_mask(i)=sum((self%point_source_array(i)%position-centre)**2)<=radius**2
+         self%point_source_array(i)%position=self%point_source_array(i)%position-centre      
+         if (.not.array_mask(i)) self%point_source_array(i)%luminosity=0._rel_kind
+      end do
+      
+      
+      
+      return
+   
+   end subroutine
 
 
 end module

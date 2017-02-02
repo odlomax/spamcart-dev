@@ -1,0 +1,183 @@
+\documentclass[11pt]{article}
+\usepackage{geometry}                % See geometry.pdf to learn the layout options. There are lots.
+\geometry{letterpaper}                   % ... or a4paper or a5paper or ... 
+%\geometry{landscape}                % Activate for for rotated page geometry
+\usepackage[parfill]{parskip}    % Activate to begin paragraphs with an empty line rather than an indent
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{epstopdf}
+\usepackage{natbib}
+\usepackage{hyperref}
+
+\DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
+
+\title{SPAMCART User Guide}
+\author{Oliver Lomax}
+%\date{}                                           % Activate to display a given date or no date
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+SPAMCART (short for Smoothed PArticle Monte CArlo Radiative Transfer) is a code written to perform meshless \citet{Lucy99} style dust radiative transfer calculations. An overview of the algorithm is given by \citet{LW16}. The program takes as input a density field (ensemble of particles) and one or more luminosity sources (point sources and/or a background radiation field). It then outputs the estimated dust temperatures and produces synthetic observations.
+
+\section{Building SPAMCART}
+
+SPAMCART is written in Fortran 2008 with OpenMP parallelisation. The source code can be downloaded from the SPAMCART GitHub repository: \url{https://github.com/odlomax/spamcart-dev}. The code has been tested using GFortran (versions 4.9.1 and later) and requires the FFTW-3 library: \url{http://www.fftw.org}.
+
+Once downloaded, SPAMCART can be built with the command: \texttt{make spamcart}. Note that the variables \texttt{LIB\_DIR} and \texttt{INC\_DIR} in \texttt{Makefile} must point respectively to the directories containing \texttt{libfftw3.a} and \texttt{fftw3.f03}. Furthermore, the \texttt{COMPILER} and \texttt{OPTIONS} variables need to be modified if you are not using GFortran.
+
+\section{Running SPAMCART}
+
+SPAMCART is run using the command: \texttt{./spamcart PARAMS\_FILE}, where \texttt{PARAMS\_FILE} is the name of your parameters file. An example parameters file, \texttt{params.dat}, is supplied with the build.
+
+\section{Parameters}
+
+The behaviour of SPAMCART is controlled by a series of parameters. They can be listed in any order in the parameters file. Omitted parameters are set to default values, given here in square braces.
+
+\subsection{Simulation parameters}
+
+\begin{itemize}
+
+	\item \texttt{sim\_cloud\_file}: Density field input file.
+	\item \texttt{sim\_star\_file}: Point sources input file.
+	\item \texttt{sim\_id}: Simulation run id. Outputs are placed in a directory with this name.
+	\item \texttt{sim\_n\_it}: Number of iterations. Note that setting this to zero will make synthetic observations straight from the input files. [5]
+	\item \texttt{sim\_n\_packet\_point}: Number of luminosity packets spread over all point sources, weighted by luminosity. [1000000]
+	\item \texttt{sim\_n\_packet\_external}: Number of luminosity packets from external radiation field. [1000000]
+	\item \texttt{sim\_mrw}: Use \citet{R10} Modified Random Walk. [.true.]
+	\item \texttt{sim\_mrw\_gamma}: MRW $\gamma$ parameter \citep[see][]{R10}. [2.]
+
+\end{itemize}
+
+\subsection{Dust parameters}
+
+SPAMCART currently uses dust properties calculated by \citet{LD01} and \citet{WD01}. Other models, including a user definable model will be added soon. The dust tables can be examined in the \texttt{dustdata} directory. The dust to gas mass ratio is roughly one hundredth.
+
+\begin{itemize}
+
+	\item \texttt{dust\_t\_min}: Minimum dust temperature in Kelvin. [2.e+0]
+	\item \texttt{dust\_t\_max}: Maximum dust temperature in Kelvin. [2.e+4]
+	\item \texttt{dust\_n\_t}: Number of log-spaced temperature values. [801]
+	\item \texttt{dust\_r\_v}: Ratio of absolute to selective extinction. Values between 3.1 and 5.5. [5.5]
+	\item \texttt{dust\_iso\_scatter}: Modify scattering opacity and mean cosine so that scattering is isotropic. [.true.]
+	\item \texttt{dust\_t\_sub}: Dust sublimation temperature in Kelvin. [1.e+3]
+	
+\end{itemize}
+
+\subsection{Radiation field parameters}
+
+SPAMCART currently supports two types of radiation field: a simple diluted blackbody (BB) and a model of the galactic interstellar radiation field calculated by \citet{PS05} (PS05). The cosmic microwave background can be added to either of these models.
+
+\begin{itemize}
+
+	\item \texttt{ext\_rf}: Include an interstellar radiation field. [.true.]
+	\item \texttt{ext\_rf\_type}: Type of radiation field. bb or ps05. [ps05]
+	\item \texttt{ext\_rf\_cmb}: Add cosmic microwave background. [.true.]
+	\item \texttt{ext\_rf\_gal\_r}: PS05 distance from galactic centre in kpc. [8.5]
+	\item \texttt{ext\_rf\_gal\_z}: PS05 distance from galactic midplane in kpc. [0.]
+	\item \texttt{ext\_rf\_t}: BB temperature in Kelvin. [1.e+4]
+	\item \texttt{ext\_rf\_d}: BB dilution factor. [5.e--16]
+	\item \texttt{ext\_rf\_lambda\_min}: BB minimum wavelength in microns. [1.e--1]
+	\item \texttt{ext\_rf\_lambda\_max}: BB maximum wavelength in microns. [1.e+4]
+	\item \texttt{ext\_rf\_n\_lambda}: BB number of log-spaced wavelength values. [1001]
+
+\end{itemize}
+
+\subsection{Point source parameters}
+
+SPAMCART currently supports two types of point sources: simple blackbody (BB) and an age, mass and metallicity dependent model of main sequence stars (MS\_STAR) \citep[see][]{CGK97,BMG12}.
+
+\begin{itemize}
+
+	\item \texttt{point\_sources}: Include point sources. [.true.]
+	\item \texttt{point\_type}: Type of point sources. bb or ms\_star. [bb]
+	\item \texttt{point\_lambda\_min}: BB minimum wavelength in microns. [1.e--1]
+	\item \texttt{point\_lambda\_max}: BB maximum wavelength in microns. [1.e+4]
+	\item \texttt{point\_n\_lambda}: BB number of log-spaced wavelength values. [1001]
+	
+\end{itemize}
+
+\subsection{SPH parameters}
+
+SPAMCART currently uses the M4 cubic spline kernel, although more may be added as required.
+
+\begin{itemize}
+	
+	\item \texttt{sph\_eta}: SPH $\eta$ parameter. [1.2]
+	\item \texttt{sph\_scattered\_light}: Capture scattered light histogram for each particle. [.true.]
+	\item \texttt{sph\_lambda\_min}: Scattered light minimum wavelength in microns. [1.e--1]
+	\item \texttt{sph\_lambda\_max}: Scattered light maximum wavelength in microns. [1.e+1]
+	\item \texttt{sph\_n\_lambda}: Scattered light number of log-spaced wavelength values. [11]
+	
+\end{itemize}
+
+\subsection{Datacube parameters}
+
+SPAMCART can generate synthetic observations in the form of a datacube and spectrum. An explanation of the data is given in the individual output files.
+
+\begin{itemize}
+
+	\item \texttt{datacube\_make}: Make a datacube and spectrum. [.true.]
+	\item \texttt{datacube\_convolve}: Convolve datacube with Gaussian PSF. [.true.]
+	\item \texttt{datacube\_lambda\_string}: List of datacube wavelengths in microns. [3.6 4.5 5.8 8.0 24. 70. 100. 160. 250. 350. 500.]
+	\item \texttt{datacube\_fwhm\_string}: List of datacube beam sizes in arcseconds. [1.7 1.7 1.7 1.9 6.0 5.6 6.8 12.0 17.6 23.9 35.2]
+	\item \texttt{datacube\_distance}: Distance to source in cm. [3.0856776e+18]
+	\item \texttt{datacube\_x\_min}: Minimum $x$ dimension of image in cm. [-4.4879361e+16]
+	\item \texttt{datacube\_x\_max}: Maximum $x$ dimension of image in cm. [4.4879361e+16]
+	\item \texttt{datacube\_y\_min}: Minimum $y$ dimension of image in cm. [-4.4879361e+16]
+	\item \texttt{datacube\_y\_max}: Maximum $y$ dimension of image in cm. [4.4879361e+16]
+	\item \texttt{datacube\_angles}: Set of three viewing angles  ($\theta$, $\phi$, $\psi$) in radians. [0. 0. 0.]
+		\begin{itemize}
+			\item $\theta$: Altitude angle. Rotates of $z$ unit vector towards the $y$ unit vector.
+			\item $\phi$: Azimuth angle. Rotates $y$ unit vector towards $x$ unit vector.
+			\item $\psi$: Rotation angle. Rotates image about the line of sight.
+		\end{itemize}
+	\item \texttt{datacube\_n\_x}: Number of $x$ values. [256]
+	\item \texttt{datacube\_n\_y}: Number of $y$ values. [256]
+
+\end{itemize}
+
+\section{Input files}
+
+The cloud and star input files share a similar layout: a header line, a units line and then a set of data columns. The header line contains whitespace delineated quantity labels. The units line contains whitespace delineated units. The data columns are whitespace delineated and match the order of the header line. The header/units/columns do not need to be in any particular order, so long as they match. The files are formatted in plain ASCII. The header and units symbols are given in \S \ref{units}\,.
+
+\subsection{Cloud file}
+
+The cloud file must contain three columns for position, a mass column and a temperature column. Alternatively, an output \texttt{*.bin} file may be supplied as a cloud file.
+
+\subsection{Star file}
+
+The star file must contain three columns for position. If the BB model is used, two columns for temperature and luminosity must be provided. If the MS\_STAR model is used, three columns for stellar mass, stellar age and stellar metallicity must be provided.
+
+\subsection{Quantities and units}
+\label{units}
+
+\begin{center}
+	\begin{tabular}{|c|c|c|}
+		\hline
+		Quantity & Header symbol & Units \\
+		\hline
+		Position & x\_1, x\_2, x\_3 & cm, m, au, pc \\
+		Mass &  m & g, kg, M\_sun \\
+		Temperature & T & K \\
+		Luminosity & L & erg\_s\^{}-1, W \\
+		Stellar mass & M & g, kg, M\_sun \\
+		Stellar age & Age & s, yr \\
+		Stellar metallicity & Z & Z\_sun, Z/(X+Y+Z)\\
+		\hline
+	\end{tabular}
+\end{center}
+
+
+
+
+%\section{}
+%\subsection{}
+
+\bibliographystyle{apj}
+\bibliography{refs}
+
+\end{document}  

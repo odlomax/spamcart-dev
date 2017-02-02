@@ -41,7 +41,9 @@ module m_io
    real(kind=rel_kind),parameter :: au_in_cm=1.4959787e+13                    ! au in cm
    real(kind=rel_kind),parameter :: kg_in_g=1.e+3                             ! kg in g
    real(kind=rel_kind),parameter :: msun_in_g=1.9891e+33                      ! solar mass in g
-   real(kind=rel_kind),parameter :: w_in_ergs=1e+7                            ! W in erg/s
+   real(kind=rel_kind),parameter :: w_in_ergs=1.e+7                           ! W in erg/s
+   real(kind=rel_kind),parameter :: z_sun=1.34e-2_rel_kind                    ! solar metalicity
+   real(kind=rel_kind),parameter :: s_in_year=3.1556926e+7                    ! seconds in a year      
    
    contains
    
@@ -286,13 +288,16 @@ module m_io
    end subroutine
    
    ! read in point_sources from file
-   subroutine read_in_point_sources_3d(position,luminosity,temperature,file_name)
+   subroutine read_in_point_sources_3d(position,temperature,luminosity,mass,age,metallicity,file_name)
    
       ! argument declarations
       real(kind=rel_kind),intent(out),allocatable :: position(:,:)            ! particle positions
-      real(kind=rel_kind),intent(out),allocatable :: luminosity(:)            ! particles luminosities
-      real(kind=rel_kind),intent(out),allocatable :: temperature(:)           ! particle temperatures
-      character(kind=chr_kind,len=string_length),intent(in) :: file_name                        ! name of input file
+      real(kind=rel_kind),intent(out),allocatable,optional :: temperature(:)  ! particle temperatures
+      real(kind=rel_kind),intent(out),allocatable,optional :: luminosity(:)   ! particles luminosities
+      real(kind=rel_kind),intent(out),allocatable,optional :: mass(:)         ! stellar mass
+      real(kind=rel_kind),intent(out),allocatable,optional :: age(:)          ! stellar age
+      real(kind=rel_kind),intent(out),allocatable,optional :: metallicity(:)  ! stellar metallicity
+      character(kind=chr_kind,len=string_length),intent(in) :: file_name      ! name of input file
       
       ! variable declarations
       integer(kind=int_kind) :: i                                             ! counter
@@ -305,8 +310,11 @@ module m_io
       integer(kind=int_kind) :: c_x3
       integer(kind=int_kind) :: c_l                                           ! luminosity column
       integer(kind=int_kind) :: c_t                                           ! temperature column
+      integer(kind=int_kind) :: c_m                                           ! mass column
+      integer(kind=int_kind) :: c_a                                           ! age column
+      integer(kind=int_kind) :: c_z                                           ! metallicity column
       integer(kind=int_kind) :: read_status                                   ! read status of file
-      real(kind=rel_kind) :: unit_factor(5)                                   ! unit conversion factor
+      real(kind=rel_kind) :: unit_factor(8)                                   ! unit conversion factor
       real(kind=rel_kind),allocatable :: data(:,:)                            ! data array from file
       character(len=h_str) :: header                                    ! header line from file
       character(len=h_str) :: unit_line                                 ! units line from file
@@ -318,6 +326,9 @@ module m_io
       ! unit_factor(3) = position(3) conversion factor
       ! unit_factor(4) = luminosity conversion factor
       ! unit_factor(5) = temperature conversion factor
+      ! unit_factor(6) = mass conversion factor
+      ! unit_factor(7) = age conversion factor
+      ! unit_factor(8) = metallicity conversion factor
       
       unit_factor=1._rel_kind
       
@@ -343,6 +354,9 @@ module m_io
       c_x3=0
       c_l=0
       c_t=0
+      c_m=0
+      c_a=0
+      c_z=0
       
       do
       
@@ -459,7 +473,61 @@ module m_io
                     stop
                      
                 end select
+                
+            case ("M")
+               c_m=n_col
+               ! set unit
+               select case (unit_line(:u_space-1))
                
+                  case ("g")
+                     unit_factor(6)=1._rel_kind/msun_in_g
+               
+                  case ("kg")
+                     unit_factor(6)=kg_in_g/msun_in_g
+                     
+                  case ("M_sun")
+                     unit_factor(6)=1._rel_kind
+                     
+                  case default
+                    write(6,"(A)") "Error: unknown mass unit "//trim(unit_line(:u_space-1))
+                    stop
+                     
+                end select
+                
+            case ("Age")
+               c_a=n_col
+               ! set unit
+               select case (unit_line(:u_space-1))
+               
+                  case ("s")
+                     unit_factor(7)=1._rel_kind/s_in_year
+               
+                  case ("yr")
+                     unit_factor(7)=1._rel_kind
+                     
+                  case default
+                    write(6,"(A)") "Error: unknown time unit "//trim(unit_line(:u_space-1))
+                    stop
+                     
+                end select
+                
+            case ("Z")
+               c_z=n_col
+               ! set unit
+               select case (unit_line(:u_space-1))
+               
+                  case ("Z_sun")
+                     unit_factor(8)=z_sun
+               
+                  case ("Z/(X+Y+Z)")
+                     unit_factor(8)=1._rel_kind
+                     
+                  case default
+                    write(6,"(A)") "Error: unknown time unit "//trim(unit_line(:u_space-1))
+                    stop
+                     
+                end select
+                
          end select
          
          ! remove column label from header line
@@ -484,15 +552,15 @@ module m_io
       ! allocate data arrays
       allocate(data(n_col,n_row))
       
-      ! make sure arrays haven't already been allocated
-      if (allocated(position)) deallocate(position)
-      if (allocated(luminosity)) deallocate(luminosity)
-      if (allocated(temperature)) deallocate(temperature)
       
       ! allocate arrays
       allocate(position(3,n_row))
-      allocate(luminosity(n_row))
-      allocate(temperature(n_row))
+      
+      if (present(luminosity)) allocate(luminosity(n_row))
+      if (present(temperature)) allocate(temperature(n_row))
+      if (present(mass)) allocate(mass(n_row))
+      if (present(age)) allocate(age(n_row))
+      if (present(metallicity)) allocate(metallicity(n_row))
       
       ! rewind file
       rewind(1)
@@ -514,8 +582,12 @@ module m_io
       position(1,:)=data(c_x1,:)*unit_factor(1)
       position(2,:)=data(c_x2,:)*unit_factor(2)
       position(3,:)=data(c_x3,:)*unit_factor(3)
-      luminosity=data(c_l,:)*unit_factor(4)
-      temperature=data(c_t,:)*unit_factor(5)
+      if (present(luminosity)) luminosity=data(c_l,:)*unit_factor(4)
+      if (present(temperature)) temperature=data(c_t,:)*unit_factor(5)
+      if (present(mass)) mass=data(c_m,:)*unit_factor(6)
+      if (present(age)) age=data(c_a,:)*unit_factor(7)
+      if (present(metallicity)) metallicity=data(c_z,:)*unit_factor(8)
+      
       
       ! deallocate data block
       deallocate(data)

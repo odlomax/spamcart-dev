@@ -56,8 +56,7 @@ module m_options
       integer(kind=int_kind) :: dust_n_t                                      ! number of dust temperature samples
       real(kind=rel_kind) :: dust_r_v                                         ! dust extinction cure coeff
       logical(kind=log_kind) :: dust_iso_scatter                              ! isotropic scattering
-      real(kind=rel_kind) :: dust_sub_t_min                                   ! minimum dust sublimation temperature
-      real(kind=rel_kind) :: dust_sub_t_max                                   ! maximum dust sublimation temperature
+      real(kind=rel_kind) :: dust_sub_t                                       ! minimum dust sublimation temperature
       
       ! external radiation field params
       logical(kind=log_kind) :: ext_rf                                        ! include an external radiation field
@@ -73,6 +72,7 @@ module m_options
       
       ! point source params
       logical(kind=log_kind) :: point_sources                                 ! include point sources
+      character(kind=chr_kind,len=string_length) :: point_type                ! point source type
       real(kind=rel_kind) :: point_lambda_min                                 ! minimum wavelength
       real(kind=rel_kind) :: point_lambda_max                                 ! maximum wavelength
       integer(kind=int_kind) :: point_n_lambda                                ! number of wavelengths
@@ -98,6 +98,9 @@ module m_options
       real(kind=rel_kind) :: datacube_angles(3)                               ! altitude, azimuth and image rotation angles
       integer(kind=int_kind) :: datacube_n_x                                  ! number of pixels along x axis
       integer(kind=int_kind) :: datacube_n_y                                  ! number of pixels along y axis
+      logical(kind=log_kind) :: datacube_source_extract                       ! extract sphere from particle ensemble
+      real(kind=rel_kind) :: datacube_source_extract_centre(n_dim)            ! centre of sphere
+      real(kind=rel_kind) :: datacube_source_extract_radius                   ! radius of sphere
       
       contains
       
@@ -134,7 +137,7 @@ module m_options
       self%sim_n_packet_external=1000000
       self%sim_equal_packets_per_point=.false.
       self%sim_n_it=5
-      self%sim_restart=.false.
+      self%sim_restart=.true.
       self%sim_initial_t=10._rel_kind
       self%sim_min_d=0._rel_kind
       self%sim_mrw=.true.
@@ -149,8 +152,7 @@ module m_options
       self%dust_n_t=801
       self%dust_r_v=5.5_rel_kind
       self%dust_iso_scatter=.true.
-      self%dust_sub_t_min=900._rel_kind
-      self%dust_sub_t_max=1100._rel_kind
+      self%dust_sub_t=1.e+3_rel_kind
       
       ! external radiation field parameters
       self%ext_rf=.true.
@@ -166,6 +168,7 @@ module m_options
       
       ! point source parameters
       self%point_sources=.true.
+      self%point_type="bb"
       self%point_lambda_min=1.e-1_rel_kind
       self%point_lambda_max=1.e+4_rel_kind
       self%point_n_lambda=1001
@@ -173,7 +176,7 @@ module m_options
       ! sph parameteres
       self%sph_kernel="m4"
       self%sph_eta=1.2_rel_kind
-      self%sph_scattered_light=.false.
+      self%sph_scattered_light=.true.
       self%sph_lambda_min=1.e-1_rel_kind
       self%sph_lambda_max=1.e+1_rel_kind
       self%sph_n_lambda=11
@@ -183,7 +186,7 @@ module m_options
       self%datacube_convolve=.true.
       self%datacube_lambda_string="3.6 4.5 5.8 8.0 24. 70. 100. 160. 250. 350. 500."    ! IRAC/MIPS/PACS/SPIRE (micron)
       self%datacube_fwhm_string="1.7 1.7 1.7 1.9 6.0 5.6 6.8 12.0 17.6 23.9 35.2"       ! PSF FWHM (arcsec)
-      self%datacube_distance=3.0856776e+18                                          ! distance from source (1 pc)
+      self%datacube_distance=3.0856776e+18_rel_kind                                 ! distance from source (1 pc)
       self%datacube_x_min=-4.4879361e+16_rel_kind                                   ! 3000 au
       self%datacube_x_max=4.4879361e+16_rel_kind                                    ! 3000 au
       self%datacube_y_min=-4.4879361e+16_rel_kind                                   ! 3000 au
@@ -191,6 +194,9 @@ module m_options
       self%datacube_angles=(/0._rel_kind,0._rel_kind,0._rel_kind/)                  ! x-y projection
       self%datacube_n_x=256
       self%datacube_n_y=256
+      self%datacube_source_extract=.false.
+      self%datacube_source_extract_centre=(/0._rel_kind,0._rel_kind,0._rel_kind/)
+      self%datacube_source_extract_radius=4.4879361e+16_rel_kind
       
       
       ! read in parameters from file
@@ -299,11 +305,8 @@ module m_options
                case ("dust_iso_scatter")
                   read(param_value,*) self%dust_iso_scatter
                   
-               case ("dust_sub_t_min")
-                  read(param_value,*) self%dust_sub_t_min
-                  
-               case ("dust_sub_t_max")
-                  read(param_value,*) self%dust_sub_t_max
+               case ("dust_sub_t")
+                  read(param_value,*) self%dust_sub_t
                   
                case ("ext_rf")
                   read(param_value,*) self%ext_rf
@@ -337,6 +340,9 @@ module m_options
                                     
                case ("point_sources")
                   read(param_value,*) self%point_sources
+                  
+               case ("point_type")
+                  self%point_type=param_value
                
                case ("point_lambda_min")
                   read(param_value,*) self%point_lambda_min
@@ -400,6 +406,16 @@ module m_options
                   
                case ("datacube_n_y")
                   read(param_value,*) self%datacube_n_y
+                  
+               case ("datacube_source_extract")
+                  read(param_value,*) self%datacube_source_extract
+               
+               case ("datacube_source_extract_centre")
+                  read(param_value,*) self%datacube_source_extract_centre
+                  
+               case ("datacube_source_extract_radius")
+                  read(param_value,*) self%datacube_source_extract_radius
+                  
                   
                case default
                

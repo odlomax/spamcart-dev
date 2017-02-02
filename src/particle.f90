@@ -55,6 +55,7 @@ module m_particle
       procedure,non_overridable :: destroy
       procedure,non_overridable :: normalise_a
       procedure,non_overridable :: reset_a_dot
+      procedure,non_overridable :: set_f_sub
       procedure,non_overridable :: a_dot_scatter
    
    end type
@@ -130,8 +131,8 @@ module m_particle
    
    end subroutine
    
-   ! reset scattering array and dust sublimation fraction
-   elemental subroutine reset_a_dot(self,sub_a_dot_min,sub_a_dot_max)
+   ! set sublimation fraction
+   elemental subroutine set_f_sub(self,sub_a_dot_min,sub_a_dot_max)
    
       ! argument declarations
       class(particle),intent(inout) :: self        ! particle object
@@ -146,11 +147,20 @@ module m_particle
       mu=0.5_rel_kind*(log(sub_a_dot_max)+log(sub_a_dot_min))
       sigma=0.5_rel_kind*(log(sub_a_dot_max)-log(sub_a_dot_min))
       
-            
-      if (associated(self%a_dot_scatter_array)) self%a_dot_scatter_array=0._rel_kind
-      
       ! vary f_sub smoothly between very small number and 1
       self%f_sub=max(0.5_rel_kind-0.5_rel_kind*erf((log(self%a_dot)-mu)/(root_two*sigma)),epsilon(0._rel_kind))
+         
+      return
+   
+   end subroutine
+   
+   ! reset scattering array and dust sublimation fraction
+   elemental subroutine reset_a_dot(self)
+   
+      ! argument declarations
+      class(particle),intent(inout) :: self        ! particle object
+            
+      if (associated(self%a_dot_scatter_array)) self%a_dot_scatter_array=0._rel_kind
          
       return
    
@@ -169,7 +179,7 @@ module m_particle
       value=0._rel_kind
       if (associated(self%lambda_array)) then
       
-         if (lambda>self%lambda_array(1).and.lambda<self%lambda_array(size(self%lambda_array))) then         
+         if (lambda>=self%lambda_array(1).and.lambda<=self%lambda_array(size(self%lambda_array))) then         
 
             value=value+self%a_dot_scatter_array(binary_search(lambda,self%lambda_array))    
                
