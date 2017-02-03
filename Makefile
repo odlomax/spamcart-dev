@@ -22,12 +22,15 @@
 
 SHELL=/bin/sh
 
+# LIB_DIR=/software/libraries/fftw/3.3.4/gnu-4.4.7/lib
+# INC_DIR=/software/libraries/fftw/3.3.4/gnu-4.4.7/include
+
 LIB_DIR=/usr/local/lib/
 INC_DIR=/usr/local/include/
 
 FFTW_LIB=fftw3
 
-COMPILER=gfortran-6
+COMPILER=gfortran
 
 EXECUTABLE=spamcart
 
@@ -46,11 +49,11 @@ OPTIONS+= $(PARALLEL_OPT)
 
 SOURCE_DIR=./src/
 
-OBJECTS=parameters.o maths.o io.o string.o options.o atomic_update.o dust.o dust_d03.o triangular_array.o particle.o kernel.o kernel_m4.o line.o binary_tree_node.o binary_tree.o ray.o source.o source_point_bb.o source_external_bb.o source_external_ps05.o datacube.o simulation.o main.o
+OBJECTS=parameters.o maths.o io.o string.o options.o atomic_update.o dust.o dust_d03.o triangular_array.o particle.o kernel.o kernel_m4.o line.o binary_tree_node.o binary_tree.o ray.o ms_star_sed.o source.o source_point_bb.o source_point_ms_star.o source_external_bb.o source_external_ps05.o image_tree_node.o datacube.o simulation.o main.o
 
 COMPILE_LINE=$(COMPILER) $(OPTIONS) -I$(INC_DIR) -c $(SOURCE_DIR)
 
-main: $(OBJECTS) $(MODULES)
+spamcart: $(OBJECTS) $(MODULES)
 	$(COMPILER) $(OPTIONS) -o $(EXECUTABLE) $(OBJECTS) -L$(LIB_DIR) -l$(FFTW_LIB)
 
 parameters.o: $(SOURCE_DIR)parameters.f90
@@ -101,17 +104,26 @@ binary_tree.o: $(SOURCE_DIR)binary_tree.f90
 ray.o: $(SOURCE_DIR)ray.f90
 	$(COMPILE_LINE)ray.f90
 
+ms_star_sed.o: $(SOURCE_DIR)ms_star_sed.f90
+	$(COMPILE_LINE)ms_star_sed.f90
+
 source.o: $(SOURCE_DIR)source.f90
 	$(COMPILE_LINE)source.f90 -Wno-unused-dummy-argument
 
 source_point_bb.o: $(SOURCE_DIR)source_point_bb.f90
 	$(COMPILE_LINE)source_point_bb.f90 -Wno-unused-dummy-argument
 
+source_point_ms_star.o: $(SOURCE_DIR)source_point_ms_star.f90
+	$(COMPILE_LINE)source_point_ms_star.f90 -Wno-unused-dummy-argument
+
 source_external_bb.o: $(SOURCE_DIR)source_external_bb.f90
 	$(COMPILE_LINE)source_external_bb.f90 -Wno-unused-dummy-argument
 	
 source_external_ps05.o: $(SOURCE_DIR)source_external_ps05.f90
 	$(COMPILE_LINE)source_external_ps05.f90 -Wno-unused-dummy-argument
+
+image_tree_node.o: $(SOURCE_DIR)image_tree_node.f90
+	$(COMPILE_LINE)image_tree_node.f90
 
 datacube.o: $(SOURCE_DIR)datacube.f90
 	$(COMPILE_LINE)datacube.f90
