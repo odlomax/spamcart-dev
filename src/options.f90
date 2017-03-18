@@ -46,6 +46,7 @@ module m_options
       real(kind=rel_kind) :: sim_initial_t                                    ! initial background temperature
       real(kind=rel_kind) :: sim_min_d                                        ! simulation minimum resolvable distance
       logical(kind=log_kind) :: sim_mrw                                       ! use modified random walk for optically thick regions
+      logical(kind=log_kind) :: sim_accurate_mrw                              ! perform MRW on smaller scales (quite slow)
       real(kind=rel_kind) :: sim_mrw_gamma                                    ! mrw gamma variable
       integer(kind=int_kind) :: sim_n_mrw                                     ! number of mrw lookup table points
       integer(kind=int_kind) :: sim_random_seed                               ! simulation random seed (0 uses random operating system data)
@@ -56,6 +57,7 @@ module m_options
       integer(kind=int_kind) :: dust_n_t                                      ! number of dust temperature samples
       real(kind=rel_kind) :: dust_r_v                                         ! dust extinction cure coeff
       logical(kind=log_kind) :: dust_iso_scatter                              ! isotropic scattering
+      character(kind=chr_kind,len=string_length) :: dust_sub_type             ! dust sublimation type
       real(kind=rel_kind) :: dust_sub_t                                       ! minimum dust sublimation temperature
       
       ! external radiation field params
@@ -76,6 +78,7 @@ module m_options
       real(kind=rel_kind) :: point_lambda_min                                 ! minimum wavelength
       real(kind=rel_kind) :: point_lambda_max                                 ! maximum wavelength
       integer(kind=int_kind) :: point_n_lambda                                ! number of wavelengths
+      character(kind=chr_kind,len=string_length) :: point_file_list           ! file containing list of luminosity file names
       
       ! sph params
       character(kind=chr_kind,len=string_length) :: sph_kernel                ! sph kernel type
@@ -101,6 +104,10 @@ module m_options
       logical(kind=log_kind) :: datacube_source_extract                       ! extract sphere from particle ensemble
       real(kind=rel_kind) :: datacube_source_extract_centre(n_dim)            ! centre of sphere
       real(kind=rel_kind) :: datacube_source_extract_radius                   ! radius of sphere
+      logical(kind=log_kind) :: datacube_ppmap                                ! add PPMAP-style data to datacube
+      character(kind=chr_kind,len=string_length) :: datacube_t_string         ! string of PPMAP temperatures
+      integer(kind=int_kind) :: datacube_n_t_moments                          ! calculate temperature moments 2 to n
+      logical(kind=log_kind) :: datacube_log_moments                          ! calculate logarithmic moments instead of linear
       
       contains
       
@@ -141,6 +148,7 @@ module m_options
       self%sim_initial_t=10._rel_kind
       self%sim_min_d=0._rel_kind
       self%sim_mrw=.true.
+      self%sim_accurate_mrw=.false.
       self%sim_mrw_gamma=2._rel_kind
       self%sim_n_mrw=1001
       self%sim_random_seed=1
@@ -152,6 +160,7 @@ module m_options
       self%dust_n_t=801
       self%dust_r_v=5.5_rel_kind
       self%dust_iso_scatter=.true.
+      self%dust_sub_type="fixed"
       self%dust_sub_t=1.e+3_rel_kind
       
       ! external radiation field parameters
@@ -172,6 +181,7 @@ module m_options
       self%point_lambda_min=1.e-1_rel_kind
       self%point_lambda_max=1.e+4_rel_kind
       self%point_n_lambda=1001
+      self%point_file_list="point_file_list.dat"
       
       ! sph parameteres
       self%sph_kernel="m4"
@@ -197,6 +207,10 @@ module m_options
       self%datacube_source_extract=.false.
       self%datacube_source_extract_centre=(/0._rel_kind,0._rel_kind,0._rel_kind/)
       self%datacube_source_extract_radius=4.4879361e+16_rel_kind
+      self%datacube_ppmap=.true.
+      self%datacube_t_string="6.47 7.58 8.88 10.40 12.19 14.28 16.73 19.60 22.97 26.91 31.54 36.95 43.30"
+      self%datacube_n_t_moments=4
+      self%datacube_log_moments=.true.
       
       
       ! read in parameters from file
@@ -284,6 +298,9 @@ module m_options
                case ("sim_mrw")
                   read(param_value,*) self%sim_mrw
                   
+               case ("sim_accurate_mrw")
+                  read(param_value,*) self%sim_accurate_mrw
+                  
                case ("sim_mrw_gamma")
                   read(param_value,*) self%sim_mrw_gamma
                   
@@ -307,6 +324,9 @@ module m_options
                   
                case ("dust_sub_t")
                   read(param_value,*) self%dust_sub_t
+                  
+               case ("dust_sub_type")
+                  self%dust_sub_type=param_value
                   
                case ("ext_rf")
                   read(param_value,*) self%ext_rf
@@ -352,6 +372,9 @@ module m_options
                   
                case ("point_n_lambda")
                   read(param_value,*) self%point_n_lambda
+               
+               case ("point_file_list")
+                  self%point_file_list=param_value
                   
                case ("sph_kernel")
                   self%sph_kernel=param_value
@@ -416,6 +439,17 @@ module m_options
                case ("datacube_source_extract_radius")
                   read(param_value,*) self%datacube_source_extract_radius
                   
+               case ("datacube_ppmap")
+                  read(param_value,*) self%datacube_ppmap
+               
+               case ("datacube_t_string")
+                  self%datacube_t_string=param_value
+                  
+               case ("datacube_n_t_moments")
+                  read(param_value,*) self%datacube_n_t_moments
+               
+               case ("datacube_log_moments")
+                  read(param_value,*) self%datacube_log_moments  
                   
                case default
                

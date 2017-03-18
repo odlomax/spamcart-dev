@@ -32,6 +32,7 @@ module m_simulation
    use m_source
    use m_source_point_bb
    use m_source_point_ms_star
+   use m_source_point_custom
    use m_source_external_bb
    use m_source_external_ps05
    use m_particle
@@ -95,6 +96,7 @@ module m_simulation
       real(kind=rel_kind),allocatable :: luminosity(:)            ! star luminosity
       real(kind=rel_kind),allocatable :: age(:)                   ! star age
       real(kind=rel_kind),allocatable :: metallicity(:)           ! star metallicity
+      character(kind=chr_kind,len=string_length) :: file_name     ! name of file
       
       ! associate parameters
       self%sim_params=>sim_params
@@ -172,8 +174,25 @@ module m_simulation
                      &age=age(i),metallicity=metallicity(i))
                end do
                
+            case ("custom")
+            
+               call read_in_point_sources_3d(position,file_name=self%sim_params%sim_star_file)
+               allocate(source_point_custom::self%point_source_array(size(position,2)))
+               
+               
+               write(*,"(A)") "initialise point sources"
+               open(2,file=trim(self%sim_params%point_file_list))
+               read(2,*) file_name
+               do i=1,size(self%point_source_array)
+                  call self%point_source_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),luminosity_file=file_name)
+               end do
+               close(2)
+                
          end select
-
+         
+         ! set sublimation radii for point sources
+         call self%point_source_array%set_sublimation_radius(self%dust_prop,self%sim_params%dust_sub_t)
+         
       else
          self%point_source_array=>null()
       end if     
@@ -275,13 +294,29 @@ module m_simulation
       ! reset scattered light bins
       call self%particle_array%reset_a_dot()
       
+      write(*,"(A)") "set sublimation fraction"
       ! set sublimation fraction
-      do i=1,size(self%particle_array)
+      ! by default, set to 1
+      self%particle_array%f_sub=1._rel_kind
+      select case (trim(self%sim_params%dust_sub_type))
       
-         self%particle_array(i)%f_sub=self%sph_tree%root_node%sph_gather_f_sub(self%sph_kernel,self%particle_array(i),&
-            4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(self%sim_params%dust_sub_t))
+         case ("variable")
       
-      end do
+            do i=1,size(self%particle_array)
+               self%particle_array(i)%f_sub=self%sph_tree%root_node%sph_gather_f_sub_variable(self%sph_kernel,&
+                  &self%particle_array(i),4._rel_kind*pi*self%dust_prop%bol_mass_emissivity(self%sim_params%dust_sub_t))
+            end do
+            
+         case ("fixed")
+         
+            if (associated(self%point_source_array)) then
+               do i=1,size(self%particle_array)
+                  self%particle_array(i)%f_sub=self%sph_tree%root_node%sph_gather_f_sub_fixed(self%sph_kernel,&
+                     &self%particle_array(i),self%point_source_array)
+               end do
+            end if
+         
+      end select
       
       if (associated(self%point_source_array)) then
       
@@ -299,6 +334,8 @@ module m_simulation
                n_packets_source=&
                   &int(real(self%sim_params%sim_n_packet_point,rel_kind)*self%point_source_array(i)%luminosity/total_luminosity)
             end if
+            
+            n_packets_source=max(1,n_packets_source)
          
             luminosity_chunk=self%point_source_array(i)%luminosity/real(n_packets_source,rel_kind)
             k=0
@@ -310,7 +347,7 @@ module m_simulation
                   call self%lum_packet_array(omp_get_thread_num()+1)%follow(self%point_source_array(i)%position,&
                      &self%point_source_array(i)%random_direction(),self%point_source_array(i)%velocity,&
                      &self%point_source_array(i)%random_wavelength(),luminosity_chunk,&
-                     &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma,tau)
+                     &self%sim_params%sim_mrw,self%sim_params%sim_accurate_mrw,self%sim_params%sim_mrw_gamma,tau)
                      
                   call atomic_integer_add(k,1)
                   call atomic_real_add(ps_mean_tau(i),tau )
@@ -345,7 +382,7 @@ module m_simulation
                call self%lum_packet_array(omp_get_thread_num()+1)%follow(position,&
                   &direction,self%isrf_prop%velocity,&
                   &wavelength,luminosity_chunk,&
-                  &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma,tau)
+                  &self%sim_params%sim_mrw,self%sim_params%sim_accurate_mrw,self%sim_params%sim_mrw_gamma,tau)
             
                call atomic_integer_add(k,1)
                call atomic_real_add(bg_mean_tau,tau)
@@ -434,21 +471,19 @@ module m_simulation
       
       ! make datacube
       write(*,"(A)") "making datacube"
-      call self%intensity_cube%initialise(self%sph_kernel,self%sph_tree,self%dust_prop,&
-         &self%sim_params%datacube_x_min,self%sim_params%datacube_x_max,self%sim_params%datacube_n_x,&
-         &self%sim_params%datacube_y_min,self%sim_params%datacube_y_max,self%sim_params%datacube_n_y,&
-         &self%sim_params%datacube_angles,string_to_real(self%sim_params%datacube_lambda_string),&
-         &background=self%isrf_prop,point_sources=self%point_source_array)
+      
+      
+      call self%intensity_cube%initialise(self%sim_params,self%isrf_prop,self%point_source_array,&
+         &self%sph_kernel,self%sph_tree,self%dust_prop)
          
       if (self%sim_params%datacube_convolve) then
          write(*,"(A)") "convolving datacube with psf"
-         call self%intensity_cube%psf_convolve&
-            &(self%sim_params%datacube_distance,string_to_real(self%sim_params%datacube_fwhm_string))
+         call self%intensity_cube%psf_convolve()
       end if
       
       write(*,"(A)") "write out datacube"
 
-      call self%intensity_cube%write_out(self%sim_params%sim_id)
+      call self%intensity_cube%write_out()
       
       return
    
@@ -569,7 +604,7 @@ module m_simulation
       do i=1,size(self%particle_array)
          array_mask(i)=sum((self%particle_array(i)%r-centre)**2)<=radius**2
          self%particle_array(i)%r=self%particle_array(i)%r-centre
-!          if (.not.array_mask(i)) call self%particle_array(i)%destroy()
+
       end do
       
       ! copy live particles
@@ -577,7 +612,6 @@ module m_simulation
       
       temp_particle_array=pack(self%particle_array,array_mask)
       
-!       deallocate(self%particle_array)
       self%particle_array=>temp_particle_array
       
       ! reset particle tree

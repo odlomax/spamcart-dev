@@ -50,6 +50,7 @@ module m_dust
       real(kind=rel_kind),allocatable :: cum_mono_mass_emissivity(:,:)     ! cumulative mono_mass_emissivity along lambda
       real(kind=rel_kind),allocatable :: norm_mono_mass_emissivity(:,:)    ! normalised mono_mass_emissivity along lambda
       real(kind=rel_kind),allocatable :: bol_mass_emissivity_array(:)      ! luminosity per unit dust mass
+      real(kind=rel_kind),allocatable :: planck_albedo_array(:)            ! blackbody weighted average albedo
       
       ! Modified Random Walk variables
       
@@ -77,6 +78,8 @@ module m_dust
       procedure,non_overridable :: bol_mass_emissivity
       procedure,non_overridable :: phase_func
       procedure,non_overridable :: dust_temperature
+      procedure,non_overridable :: planck_albedo
+      procedure,non_overridable :: spectrum_albedo
       procedure,non_overridable :: random_wavelength
       procedure,non_overridable :: random_scatter_cosine
       procedure,non_overridable,nopass :: random_emission_direction
@@ -129,6 +132,7 @@ module m_dust
       deallocate(self%cum_mono_mass_emissivity)
       deallocate(self%norm_mono_mass_emissivity)
       deallocate(self%bol_mass_emissivity_array)
+      deallocate(self%planck_albedo_array)
       if (allocated(self%mrw_zeta_array)) deallocate(self%mrw_zeta_array)
       if (allocated(self%mrw_y_array)) deallocate(self%mrw_y_array)
       if (allocated(self%mrw_planck_abs_array)) deallocate(self%mrw_planck_abs_array)
@@ -283,6 +287,40 @@ module m_dust
       value=lookup_and_interpolate(abs_rate/(4._rel_kind*pi),&
          &self%bol_mass_emissivity_array,self%temperature_array)
       
+      return
+   
+   end function
+   
+   ! return planck weighted albedo
+   elemental function planck_albedo(self,abs_rate) result (value)
+      
+      ! argument declarations
+      class(dust),intent(in) :: self                          ! dust object
+      real(kind=rel_kind),intent(in) :: abs_rate              ! dust absorption rate
+      
+      ! result declaration
+      real(kind=rel_kind) :: value                            ! average albedo
+      
+      value=lookup_and_interpolate(abs_rate/(4._rel_kind*pi),self%bol_mass_emissivity_array,self%planck_albedo_array)
+   
+      return
+      
+   end function
+   
+   ! return spectrum weighted albedo
+   pure function spectrum_albedo(self,wavelength_array,intensity_array) result (value)
+   
+      ! argument declarations
+      class(dust),intent(in) :: self                          ! dust object
+      real(kind=rel_kind),intent(in) :: wavelength_array(:)   ! array of wavelengths
+      real(kind=rel_kind),intent(in) :: intensity_array(:)    ! intensity (function of wavelength)
+      
+      ! result declaration
+      real(kind=rel_kind) :: value                            ! average albedo
+      
+      value=trapz_intgr(wavelength_array,intensity_array*self%albedo(wavelength_array))/&
+         &trapz_intgr(wavelength_array,intensity_array)
+   
       return
    
    end function

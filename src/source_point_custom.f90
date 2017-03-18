@@ -20,22 +20,21 @@
 ! OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ! SOFTWARE.
 
-! Main Sequence star point source module
-module m_source_point_ms_star
+! custom point source module
+module m_source_point_custom
 
    use m_kind_parameters
    use m_constants_parameters
    use m_maths
    use m_source
-   use m_ms_star_sed
    
    implicit none
    
    private
-   public :: source_point_ms_star
+   public :: source_point_custom
    
-   ! blackbody point source
-   type,extends(source_point) :: source_point_ms_star
+   ! custom point source
+   type,extends(source_point) :: source_point_custom
    
       contains
       
@@ -50,7 +49,7 @@ module m_source_point_ms_star
       &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity,luminosity_file)
    
       ! argument declarations
-      class(source_point_ms_star),intent(inout) :: self           ! Main Sequence star point source object
+      class(source_point_custom),intent(inout) :: self            ! custom point source object
       real(kind=rel_kind),intent(in) :: position(n_dim)           ! position of source
       real(kind=rel_kind),intent(in) :: velocity(n_dim)           ! velocity of source
       real(kind=rel_kind),intent(in),optional :: temperature      ! temperature of source
@@ -64,23 +63,17 @@ module m_source_point_ms_star
       real(kind=rel_kind),intent(in),optional :: gal_z            ! galactic height
       real(kind=rel_kind),intent(in),optional :: g_0              ! optional g_0 normalisation
       logical(kind=log_kind),intent(in),optional :: add_cmb       ! add cosmic microwave background
-      real(kind=rel_kind),intent(in),optional :: mass             ! mass of star mass of star in solar masses (required)
-      real(kind=rel_kind),intent(in),optional :: age              ! age of star in years (required)
-      real(kind=rel_kind),intent(in),optional :: metallicity      ! metallicity mass fraction of star (required)
-      character(kind=chr_kind,len=string_length),intent(in),optional :: luminosity_file   ! mono luminosity file name
+      real(kind=rel_kind),intent(in),optional :: mass             ! mass of star
+      real(kind=rel_kind),intent(in),optional :: age              ! age of star
+      real(kind=rel_kind),intent(in),optional :: metallicity      ! metallicity of star
+      character(kind=chr_kind,len=string_length),intent(in),optional :: luminosity_file   ! mono luminosity file name (required)
       
       ! variable declarations
-      type(ms_star_sed) :: star_sed                               ! star sed object
+      integer(kind=int_kind) :: i                                 ! counter
+      integer(kind=int_kind) :: n_line                            ! number of lines in file
+      integer(kind=int_kind) :: read_status                       ! read status of file
       
-      ! initialise star sed object
-      call star_sed%initialise(mass,age,metallicity)
-      
-      ! allocate arrays
-      allocate(self%wavelength_array(size(star_sed%wavelength_array)))
-      allocate(self%intensity_array(size(star_sed%wavelength_array)))
-      allocate(self%norm_intensity_array(size(star_sed%wavelength_array)))
-      allocate(self%cum_intensity_array(size(star_sed%wavelength_array)))
-      
+      ! set position
       self%position=position
       self%velocity=velocity
       
@@ -88,21 +81,40 @@ module m_source_point_ms_star
       self%radius=0._rel_kind
       self%g_0=0._rel_kind
       
-      ! populate arrays
-      self%wavelength_array=star_sed%wavelength_array
-      self%intensity_array=star_sed%intensity_array
+      
+      ! read size of luminosity file
+      open(1,file=trim(luminosity_file))
+      n_line=0
+      do
+      
+         read(1,*,iostat=read_status)
+         
+         if (read_status<0) exit
+         
+         n_line=n_line+1
+         
+      end do
+      ! allocate array
+      allocate(self%wavelength_array(n_line))
+      allocate(self%intensity_array(n_line))
+      allocate(self%norm_intensity_array(n_line))
+      allocate(self%cum_intensity_array(n_line))
+      
+      ! read luminosity file
+      rewind(1)
+      do i=1,n_line
+         read(1,*) self%wavelength_array(i), self%intensity_array(i)
+      end do
+      close(1)
       
       ! calculate luminosity
-      self%luminosity=star_sed%bol_luminosity
-      self%bolometric_intensity=trapz_intgr(self%wavelength_array,self%intensity_array)
+      self%luminosity=trapz_intgr(self%wavelength_array,self%intensity_array)
+      self%bolometric_intensity=self%luminosity
       
       ! normalise intensity and calculate cumulative distribution
       self%norm_intensity_array=self%intensity_array/&
          &trapz_intgr(self%wavelength_array,self%intensity_array)
       self%cum_intensity_array=cum_dist_func(self%wavelength_array,self%intensity_array,.true._log_kind)
-      
-      ! destroy star sed object
-      call star_sed%destroy()
       
       return
       

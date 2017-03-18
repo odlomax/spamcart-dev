@@ -67,10 +67,12 @@ module m_dust_d03
       integer(kind=int_kind) :: n_wavelength                            ! number of wavelengths
       real(kind=rel_kind) :: dummy                                      ! dummy variable
       real(kind=rel_kind) :: model_gas_to_dust_mass                     ! dust to gas mass ratio from model
+      real(kind=rel_kind) :: temp_blackbody                             ! integrated blackbody spectrum
       real(kind=rel_kind),allocatable :: temp_dust_mass_abs(:,:)        ! temp dust mass absorption coeff
       real(kind=rel_kind),allocatable :: temp_albedo(:,:)               ! temp albedo
       real(kind=rel_kind),allocatable :: temp_mean_cos_theta(:,:)       ! temp mean cosine
       real(kind=rel_kind),allocatable :: temp_gas_to_dust_mass(:)       ! temp dust to gas mass ratio
+      real(kind=rel_kind),allocatable :: temp_blackbody_array(:)        ! temporary blackbody spectrum array
       real(kind=rel_kind),allocatable :: iso_dust_mass_ext_array(:)     ! isotropic scattering dust mass ext
       real(kind=rel_kind),allocatable :: iso_albedo_array(:)            ! isotropic albedo array
       real(kind=rel_kind),allocatable :: r_v_value(:)                   ! r_v value array
@@ -92,11 +94,13 @@ module m_dust_d03
       allocate(self%cum_mono_mass_emissivity(n_wavelength,n_temperature))
       allocate(self%norm_mono_mass_emissivity(n_wavelength,n_temperature))
       allocate(self%bol_mass_emissivity_array(n_temperature))
+      allocate(self%planck_albedo_array(n_temperature))
       allocate(r_v_value(size(r_v_string)))
       allocate(temp_dust_mass_abs(size(r_v_string),n_wavelength))
       allocate(temp_albedo(size(r_v_string),n_wavelength))
       allocate(temp_mean_cos_theta(size(r_v_string),n_wavelength))
       allocate(temp_gas_to_dust_mass(size(r_v_string)))
+      allocate(temp_blackbody_array(n_wavelength))
       
       ! get temperatures
       self%temperature_array=log_lin_space(temperature_min,temperature_max,n_temperature)
@@ -207,15 +211,23 @@ module m_dust_d03
       ! calculate temperature dependent values
       do i=1,n_temperature
       
-         self%mono_mass_emissivity_array(:,i)=planck_lambda(self%wavelength_array,self%temperature_array(i))*&
-            &self%dust_mass_ext_array*(1._rel_kind-self%albedo_array)
+         temp_blackbody_array=planck_lambda(self%wavelength_array,self%temperature_array(i))
+         temp_blackbody=trapz_intgr(self%wavelength_array,temp_blackbody_array)
+      
+         self%mono_mass_emissivity_array(:,i)=temp_blackbody_array*self%dust_mass_ext_array*(1._rel_kind-self%albedo_array)
          self%cum_mono_mass_emissivity(:,i)=&
             &cum_dist_func(self%wavelength_array,self%mono_mass_emissivity_array(:,i),.true._log_kind)
          self%bol_mass_emissivity_array(i)=trapz_intgr(self%wavelength_array,self%mono_mass_emissivity_array(:,i))
          self%norm_mono_mass_emissivity(:,i)=self%mono_mass_emissivity_array(:,i)/&
             &self%bol_mass_emissivity_array(i)
+            
+         do j=1,n_wavelength
+            self%planck_albedo_array(i)=trapz_intgr(self%wavelength_array,temp_blackbody_array*self%albedo_array)/temp_blackbody
+         end do   
       
       end do
+      
+      deallocate(temp_blackbody_array)
       
       return
    

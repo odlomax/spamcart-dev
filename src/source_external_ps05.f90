@@ -47,7 +47,7 @@ module m_source_external_ps05
    ! set up Porter and Strong 2005 interstellar radiation field
    subroutine initialise(self,position,velocity,&
       &temperature,luminosity,wavelength_min,wavelength_max,n_wavelength,&
-      &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity)
+      &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity,luminosity_file)
    
       ! argument declarations
       class(source_external_ps05),intent(inout) :: self           ! source object
@@ -67,6 +67,7 @@ module m_source_external_ps05
       real(kind=rel_kind),intent(in),optional :: mass             ! mass of star
       real(kind=rel_kind),intent(in),optional :: age              ! age of star
       real(kind=rel_kind),intent(in),optional :: metallicity      ! metallicity of star
+      character(kind=chr_kind,len=string_length),intent(in),optional :: luminosity_file   ! mono luminosity file name
       
       ! variable declarations
       integer(kind=int_kind) :: i                                       ! counter

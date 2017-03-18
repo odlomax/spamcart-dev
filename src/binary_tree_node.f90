@@ -30,6 +30,7 @@ module m_binary_tree_node
    use m_kernel
    use m_line
    use m_dust
+   use m_source
 
    implicit none
    
@@ -51,7 +52,8 @@ module m_binary_tree_node
       procedure,non_overridable :: destroy
       procedure,non_overridable :: stock
       procedure,non_overridable :: sph_gather_density
-      procedure,non_overridable :: sph_gather_f_sub
+      procedure,non_overridable :: sph_gather_f_sub_variable
+      procedure,non_overridable :: sph_gather_f_sub_fixed
       procedure,non_overridable :: sph_scatter
       procedure,non_overridable :: sph_inv_mfp
       procedure,non_overridable :: ray_aabb_intersection
@@ -207,7 +209,7 @@ module m_binary_tree_node
    end function
    
    ! peform sph gather to calculate smoothed sublimation fraction
-   pure recursive function sph_gather_f_sub(self,sph_kernel,sph_particle,a_dot_sub) result (f_sub)
+   pure recursive function sph_gather_f_sub_variable(self,sph_kernel,sph_particle,a_dot_sub) result (f_sub)
    
       ! argument declarations
       class(binary_tree_node),intent(in) :: self                ! binary tree node object
@@ -230,14 +232,68 @@ module m_binary_tree_node
          if (associated(self%left_node)) then
          
             ! recurse down tree
-            f_sub=f_sub+self%left_node%sph_gather_f_sub(sph_kernel,sph_particle,a_dot_sub)
-            f_sub=f_sub+self%right_node%sph_gather_f_sub(sph_kernel,sph_particle,a_dot_sub)
+            f_sub=f_sub+self%left_node%sph_gather_f_sub_variable(sph_kernel,sph_particle,a_dot_sub)
+            f_sub=f_sub+self%right_node%sph_gather_f_sub_variable(sph_kernel,sph_particle,a_dot_sub)
             
          else
          
             ! calculate quantities from leaf
             do i=1,size(self%particle_array)
                f_sub=f_sub+merge(1._rel_kind,epsilon(0._rel_kind),self%particle_array(i)%a_dot<a_dot_sub)*&
+                  &self%particle_array(i)%m*sph_kernel%w(norm2(sph_particle%r-self%particle_array(i)%r)/sph_particle%h)/&
+                  &(sph_particle%h**n_dim*sph_particle%rho)
+            end do
+         end if
+         
+      end if
+      
+      return
+   
+   end function
+   
+   ! peform sph gather to calculate smoothed sublimation fraction
+   pure recursive function sph_gather_f_sub_fixed(self,sph_kernel,sph_particle,point_source_array) result (f_sub)
+   
+      ! argument declarations
+      class(binary_tree_node),intent(in) :: self                ! binary tree node object
+      class(kernel),intent(in) :: sph_kernel                    ! sph kernel object
+      type(particle),intent(in) :: sph_particle                 ! sph particle
+      class(source),intent(in) :: point_source_array(:)         ! array of point sources
+      
+      ! result declaration
+      real(kind=rel_kind) :: f_sub                              ! sublimation fraction
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i,j                             ! counter
+      logical(kind=log_kind) :: in_radius                       ! is particle within a sublimation radius?
+      
+      f_sub=0._rel_kind
+      
+      ! check if virtual particle overlaps aabb of node
+      if (all(sph_particle%r+sph_particle%h*sph_kernel%r_support>self%aabb(:,1).and.&
+         sph_particle%r-sph_particle%h*sph_kernel%r_support<self%aabb(:,2))) then
+      
+         if (associated(self%left_node)) then
+         
+            ! recurse down tree
+            f_sub=f_sub+self%left_node%sph_gather_f_sub_fixed(sph_kernel,sph_particle,point_source_array)
+            f_sub=f_sub+self%right_node%sph_gather_f_sub_fixed(sph_kernel,sph_particle,point_source_array)
+            
+         else
+         
+            ! calculate quantities from leaf
+            do i=1,size(self%particle_array)
+            
+               in_radius=.false.
+               do j=1,size(point_source_array)
+                  if (sum((self%particle_array(i)%r-point_source_array(j)%position)**2)<=point_source_array(j)%radius**2) then
+                     in_radius=.true.
+                     exit
+                  end if
+               end do   
+            
+            
+               f_sub=f_sub+merge(epsilon(0._rel_kind),1._rel_kind,in_radius)*&
                   &self%particle_array(i)%m*sph_kernel%w(norm2(sph_particle%r-self%particle_array(i)%r)/sph_particle%h)/&
                   &(sph_particle%h**n_dim*sph_particle%rho)
             end do
@@ -298,7 +354,7 @@ module m_binary_tree_node
    
    ! calculate the inverse mean free path, and its gradient
    pure recursive subroutine sph_inv_mfp(self,sph_kernel,dust_prop,&
-      &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h,ave_inv_mfp)
+      &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,inv_h,ave_inv_mfp,grad_ave_inv_mfp)
    
       ! argument declarations
       class(binary_tree_node),intent(in) :: self                ! binary tree node object
@@ -310,8 +366,9 @@ module m_binary_tree_node
       real(kind=rel_kind),intent(in) :: v_em(n_dim)             ! velocity of emission
       real(kind=rel_kind),intent(inout) :: inv_mfp              ! inverse mean free path
       real(kind=rel_kind),intent(inout) :: grad_inv_mfp(n_dim)  ! gradient of inverse mean free path
-      real(kind=rel_kind),intent(inout) :: h                    ! smoothing length
+      real(kind=rel_kind),intent(inout) :: inv_h                ! inverse smoothing length to the power n_dim
       real(kind=rel_kind),intent(inout) :: ave_inv_mfp          ! planck averaged mean free path
+      real(kind=rel_kind),intent(inout) :: grad_ave_inv_mfp(n_dim)   ! gradient of planck average mean free path
        
       ! variable declarations
       integer(kind=int_kind) :: i                               ! counter
@@ -320,6 +377,7 @@ module m_binary_tree_node
       real(kind=rel_kind) :: grad_w(n_dim)                      ! kernel density gradient
       real(kind=rel_kind) :: lambda_ob                          ! wavelength in rest frame of particle
       real(kind=rel_kind) :: dust_mass_ext                      ! mass extinction coefficient
+      real(kind=rel_kind) :: inv_planck_ext                     ! inverse mean planck extinction
       
       ! check if position is within aabb of node
       if (any(r<self%aabb(:,1)).or.any(r>self%aabb(:,2))) return
@@ -328,9 +386,9 @@ module m_binary_tree_node
       
          ! recurse down tree
          call self%left_node%sph_inv_mfp(sph_kernel,dust_prop,&
-            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h,ave_inv_mfp)
+            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,inv_h,ave_inv_mfp,grad_ave_inv_mfp)
          call self%right_node%sph_inv_mfp(sph_kernel,dust_prop,&
-            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,h,ave_inv_mfp)
+            &r,lambda_em,n_em,v_em,inv_mfp,grad_inv_mfp,inv_h,ave_inv_mfp,grad_ave_inv_mfp)
          
       else
       
@@ -345,12 +403,15 @@ module m_binary_tree_node
             lambda_ob=lambda_em*&
                &(dot_product(self%particle_array(i)%v-v_em,n_em)/c_light+1._rel_kind)
             dust_mass_ext=dust_prop%dust_mass_ext(lambda_ob)*self%particle_array(i)%f_sub
+            inv_planck_ext=dust_prop%mrw_inv_planck_ext(self%particle_array(i)%a_dot)*self%particle_array(i)%f_sub
             
             inv_mfp=inv_mfp+self%particle_array(i)%m*dust_mass_ext*w
             grad_inv_mfp=grad_inv_mfp+self%particle_array(i)%m*dust_mass_ext*grad_w
-            h=h+self%particle_array(i)%m*self%particle_array(i)%inv_rho*self%particle_array(i)%h*w
-            ave_inv_mfp=ave_inv_mfp+self%particle_array(i)%m*w*&
-               &self%particle_array(i)%f_sub*dust_prop%mrw_inv_planck_ext(self%particle_array(i)%a_dot)
+            
+            inv_h=inv_h+w
+            
+            ave_inv_mfp=ave_inv_mfp+self%particle_array(i)%m*inv_planck_ext*w
+            grad_ave_inv_mfp=grad_ave_inv_mfp+self%particle_array(i)%m*inv_planck_ext*grad_w
             
          end do
       

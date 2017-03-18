@@ -24,6 +24,7 @@
 module m_image_tree_node
 
    use m_kind_parameters
+   use m_maths
    use m_particle
    
    implicit none
@@ -55,6 +56,8 @@ module m_image_tree_node
       integer(kind=int_kind) :: level                          ! level of tree
       integer(kind=int_kind) :: max_level                      ! maximum level of tree
       real(kind=rel_kind) :: sigma                             ! column density
+      real(kind=rel_kind),allocatable :: t_sigma(:)            ! array of temperature differential column densities
+      real(kind=rel_kind),allocatable :: t_moments(:)          ! temperature moments
       real(kind=rel_kind),allocatable :: i_lambda(:)           ! intensity array
       real(kind=rel_kind),allocatable :: j_lambda(:)           ! intensity array
       type(proj_particle),pointer,contiguous :: particle_array(:) ! particle array
@@ -152,6 +155,8 @@ module m_image_tree_node
       
       if (allocated(self%i_lambda)) deallocate(self%i_lambda)
       if (allocated(self%j_lambda)) deallocate(self%j_lambda)
+      if (allocated(self%t_sigma)) deallocate(self%t_sigma)
+      if (allocated(self%t_moments)) deallocate(self%t_moments)
       
       if (associated(self%children)) then
       
@@ -197,19 +202,23 @@ module m_image_tree_node
    end function
    
    ! set assign i_lambda array to all leaves in tree
-   pure recursive subroutine set_leaf_i_lambda(self,i_lambda,j_lambda,sigma)
+   pure recursive subroutine set_leaf_i_lambda(self,i_lambda,j_lambda,sigma,t_sigma,t_moments)
    
       ! argument declarations
       class(image_tree_node),intent(inout) :: self          ! quadtree node
       real(kind=rel_kind),intent(in),contiguous :: i_lambda(:,:)  ! i_lambda array. second dimension must equal self%n_leaf
       real(kind=rel_kind),intent(in),contiguous :: j_lambda(:,:)  ! j_lambda_array
       real(kind=rel_kind),intent(in),contiguous :: sigma(:)       ! column density array
+      real(kind=rel_kind),intent(in),contiguous,optional :: t_sigma(:,:)   ! temperature differential column density
+      real(kind=rel_kind),intent(in),contiguous,optional :: t_moments(:,:) ! temperature moments 
       
       ! variable declarations
       integer(kind=int_kind) :: i,j                         ! counter
       
       allocate(self%i_lambda(size(i_lambda,1)))
       allocate(self%j_lambda(size(j_lambda,1)))
+      if (present(t_sigma)) allocate(self%t_sigma(size(t_sigma,1)))
+      if (present(t_moments)) allocate(self%t_moments(size(t_moments,1)))
       
       if (associated(self%children)) then
       
@@ -218,23 +227,31 @@ module m_image_tree_node
          self%i_lambda=0._rel_kind
          self%j_lambda=0._rel_kind
          self%sigma=0._rel_kind
+         if (present(t_sigma)) self%t_sigma=0._rel_kind
+         if (present(t_moments)) self%t_moments=0._rel_kind 
          do i=1,size(self%children)
             call self%children(i)%set_leaf_i_lambda(i_lambda(:,j:j+self%children(i)%n_leaf-1),&
-               &j_lambda(:,j:j+self%children(i)%n_leaf-1),sigma(j:j+self%children(i)%n_leaf-1))
+               &j_lambda(:,j:j+self%children(i)%n_leaf-1),sigma(j:j+self%children(i)%n_leaf-1),&
+               &t_sigma(:,j:j+self%children(i)%n_leaf-1),t_moments(:,j:j+self%children(i)%n_leaf-1))
             j=j+self%children(i)%n_leaf
             self%i_lambda=self%i_lambda+self%children(i)%i_lambda
             self%j_lambda=self%j_lambda+self%children(i)%j_lambda
             self%sigma=self%sigma+self%children(i)%sigma
+            if (present(t_sigma)) self%t_sigma=self%t_sigma+self%children(i)%t_sigma
+            if (present(t_moments)) self%t_moments=self%children(i)%t_moments*self%children(i)%sigma
          end do
          self%i_lambda=self%i_lambda/real(size(self%children),rel_kind)
          self%j_lambda=self%j_lambda/real(size(self%children),rel_kind)
          self%sigma=self%sigma/real(size(self%children),rel_kind)
-      
+         if (present(t_sigma)) self%t_sigma=self%t_sigma/real(size(self%children),rel_kind)
+         if (present(t_moments)) self%t_moments=self%t_moments/sum(self%children%sigma)
       else
       
          self%i_lambda=i_lambda(:,1)
          self%j_lambda=j_lambda(:,1)
          self%sigma=sigma(1)
+         if (present(t_sigma)) self%t_sigma=t_sigma(:,1)
+         if (present(t_moments)) self%t_moments=t_moments(:,1)
       
       end if
    
@@ -336,9 +353,20 @@ module m_image_tree_node
          end do
       
       else
-      
-         write(format_string,"(A,I0,A)") "(",size(self%aabb)+1+2*size(self%i_lambda),"(E25.17))"
-         write(file_id,trim(format_string)) self%aabb,self%sigma,self%i_lambda,self%j_lambda
+ 
+         if (allocated(self%t_sigma).and.allocated(self%t_moments)) then
+         
+            write(format_string,"(A,I0,A)") "(",size(self%aabb)+1+size(self%t_sigma)+&
+               &size(self%t_moments)+2*size(self%i_lambda),"(E25.17))"
+            write(file_id,trim(format_string)) self%aabb,self%sigma,self%t_sigma,&
+               &nth_rt(self%t_moments,(/(i,i=1,size(self%t_moments))/)),self%i_lambda,self%j_lambda
+         
+         else
+ 
+            write(format_string,"(A,I0,A)") "(",size(self%aabb)+1+2*size(self%i_lambda),"(E25.17))"
+            write(file_id,trim(format_string)) self%aabb,self%sigma,self%i_lambda,self%j_lambda
+         
+         end if
       
       end if 
       

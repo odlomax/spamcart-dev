@@ -26,6 +26,7 @@ module m_source
    use m_kind_parameters
    use m_constants_parameters
    use m_maths
+   use m_dust
    
    implicit none
    
@@ -42,7 +43,7 @@ module m_source
       real(kind=rel_kind) :: luminosity                                 ! luminosity of source
       real(kind=rel_kind) :: position(n_dim)                            ! position of source
       real(kind=rel_kind) :: velocity(n_dim)                            ! velocity of source
-      real(kind=rel_kind) :: radius                                     ! radius of closed surface
+      real(kind=rel_kind) :: radius                                     ! radius of closed surface/sublimation radius
       real(kind=rel_kind) :: g_0                                        ! ionising intensity in Harbing units
       real(kind=rel_kind) :: bolometric_intensity                       ! intensity over all wavelength
       real(kind=rel_kind),allocatable :: wavelength_array(:)            ! array of wavelengths
@@ -56,8 +57,9 @@ module m_source
       procedure,non_overridable :: destroy
       procedure,non_overridable :: intensity
       procedure,non_overridable :: random_wavelength
-      procedure,non_overridable :: random_position
+      procedure :: set_sublimation_radius
       procedure(random_direction_virtual),deferred :: random_direction
+      procedure(random_position_virtual),deferred :: random_position
    
    end type
    
@@ -67,6 +69,8 @@ module m_source
       contains
       
       procedure :: random_direction=>random_direction_source_point
+      procedure :: random_position=>random_position_source_point
+
    
    end type
    
@@ -76,6 +80,7 @@ module m_source
       contains
       
       procedure :: random_direction=>random_direction_source_external
+      procedure :: random_position=>random_position_source_external
    
    end type
    
@@ -84,9 +89,9 @@ module m_source
    abstract interface
       subroutine initialise_virtual(self,position,velocity,&
          &temperature,luminosity,wavelength_min,wavelength_max,n_wavelength,&
-         &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity)
+         &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity,luminosity_file)
          
-         import :: source,int_kind,rel_kind,log_kind,n_dim
+         import :: source,int_kind,rel_kind,chr_kind,string_length,log_kind,n_dim
          
          ! argument declarations
          class(source),intent(inout) :: self                         ! source object
@@ -106,6 +111,7 @@ module m_source
          real(kind=rel_kind),intent(in),optional :: mass             ! mass of star
          real(kind=rel_kind),intent(in),optional :: age              ! age of star
          real(kind=rel_kind),intent(in),optional :: metallicity      ! metallicity of star
+         character(kind=chr_kind,len=string_length),intent(in),optional :: luminosity_file   ! mono luminosity file name
          
       end subroutine
    end interface
@@ -121,6 +127,20 @@ module m_source
    
          ! result declaration
          real(kind=rel_kind) :: value(n_dim)
+   
+      end function
+   end interface
+   
+   abstract interface
+      function random_position_virtual(self) result (value)
+   
+         import :: source,rel_kind,n_dim
+   
+         ! argument declarations
+         class(source),intent(in) :: self                            ! radiation source object
+   
+         ! result declaration
+         real(kind=rel_kind) :: value(n_dim)                         ! random position
    
       end function
    end interface
@@ -182,10 +202,24 @@ module m_source
          
    end function
       
-   function random_position(self) result (value)
+   function random_position_source_point(self) result (value)
    
       ! argument declarations
-      class(source),intent(in) :: self              ! source object
+      class(source_point),intent(in) :: self              ! source object
+   
+      ! result declaration
+      real(kind=rel_kind) :: value(n_dim)
+      
+      value=0._rel_kind
+      
+      return
+   
+   end function
+   
+   function random_position_source_external(self) result (value)
+   
+      ! argument declarations
+      class(source_external),intent(in) :: self              ! source object
    
       ! result declaration
       real(kind=rel_kind) :: value(n_dim)
@@ -235,5 +269,28 @@ module m_source
       return
    
    end function
+   
+   elemental subroutine set_sublimation_radius(self,dust_prop,t_sub)
+   
+      ! argument declarations
+      class(source),intent(inout) :: self                       ! radiation source object
+      class(dust),intent(in) :: dust_prop                       ! dust properties object
+      real(kind=rel_kind),intent(in) :: t_sub                   ! dust sublimation temperature
+      
+      ! variable declarations
+      real(kind=rel_kind) :: abs_rate                           ! dust energy absorption rate per unit mass
+      real(kind=rel_kind) :: epsilon_t_sub                      ! dust emissivity at sublimation temperature
+      real(kind=rel_kind) :: epsilon_star                       ! dust emissivity given stellar spectrum
+      
+      abs_rate=4._rel_kind*pi*dust_prop%bol_mass_emissivity(t_sub)
+      epsilon_t_sub=1._rel_kind-dust_prop%planck_albedo(abs_rate)
+      epsilon_star=1._rel_kind-dust_prop%spectrum_albedo(self%wavelength_array,self%intensity_array)
+      
+      
+      self%radius=sqrt((self%luminosity*epsilon_star)/(4._rel_kind*pi*sigma_sb*1.e+3_rel_kind*t_sub**4*epsilon_t_sub))
+   
+      return
+   
+   end subroutine
    
 end module

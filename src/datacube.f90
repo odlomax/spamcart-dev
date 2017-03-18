@@ -24,8 +24,10 @@
 module m_datacube
 
    use m_kind_parameters
+   use m_options
    use m_constants_parameters
    use m_maths
+   use m_string
    use m_ray
    use m_kernel
    use m_binary_tree
@@ -33,6 +35,7 @@ module m_datacube
    use m_source
    use m_image_tree_node
    use omp_lib
+   use ieee_arithmetic
    
    implicit none
    
@@ -42,11 +45,13 @@ module m_datacube
    ! define 3D space datacube class
    type :: datacube
    
+      type(options),pointer :: sim_params
       type(image_tree_node),pointer :: image_tree_root      ! root node of image tree
       type(proj_particle),pointer,contiguous :: image_tree_particle_array(:) ! projected particles for image tree
       real(kind=rel_kind),allocatable :: x(:)               ! x coordinate
       real(kind=rel_kind),allocatable :: y(:)               ! y coordinate
       real(kind=rel_kind),allocatable :: lambda(:)          ! wavelengths
+      real(kind=rel_kind),allocatable :: t_bins(:)          ! temperature bins
       real(kind=rel_kind),allocatable :: i_lambda(:,:,:)    ! flux density
       real(kind=rel_kind),allocatable :: sigma(:,:)         ! column density
       real(kind=rel_kind),allocatable :: ps_l_lambda(:,:,:) ! point source luminosity (unattuenuated and attenuated)
@@ -63,31 +68,23 @@ module m_datacube
    
    contains
    
-   subroutine initialise(self,sph_kernel,sph_tree,dust_prop,&
-      &x_min,x_max,n_x,y_min,y_max,n_y,&
-      &angle,lambda_array,v_ob_in,background,point_sources)
+   subroutine initialise(self,sim_params,background,point_sources,sph_kernel,sph_tree,dust_prop,v_ob_in)
    
       ! argument declarations
       class(datacube),intent(inout) :: self                 ! datacube object
-      class(kernel),intent(inout),target :: sph_kernel      ! SPH kernel object
-      class(dust),intent(inout),target :: dust_prop         ! dust object
-      type(binary_tree),intent(inout) :: sph_tree           ! SPH tree object
-      real(kind=rel_kind),intent(in) :: x_min               ! minimum x position (relative to CoM)
-      real(kind=rel_kind),intent(in) :: x_max               ! maximum x position (relative to CoM)
-      integer(kind=int_kind),intent(in) :: n_x              ! number of x points
-      real(kind=rel_kind),intent(in) :: y_min               ! minimum y position (relative to CoM)
-      real(kind=rel_kind),intent(in) :: y_max               ! maximum y position (relative to CoM)
-      integer(kind=int_kind),intent(in) :: n_y              ! number of y points
-      real(kind=rel_kind),intent(in) :: angle(3)            ! (altitude,azimuth,rotation)
-      real(kind=rel_kind),intent(in) :: lambda_array(:)     ! custom array of wavelengths
-      real(kind=rel_kind),intent(in),optional :: v_ob_in(n_dim)   ! velocity of observer
+      type(options),intent(in),target :: sim_params         ! simulation parameters object
       class(source),intent(in),optional :: background       ! background radiation field
       class(source),intent(in),optional :: point_sources(:) ! point sources
+      class(kernel),intent(inout),target :: sph_kernel      ! SPH kernel object
+      type(binary_tree),intent(inout) :: sph_tree           ! SPH tree object
+      class(dust),intent(inout),target :: dust_prop         ! dust object
+      real(kind=rel_kind),intent(in),optional :: v_ob_in(n_dim)   ! velocity of observer
+
       
       ! variable declarations
       type(ray),allocatable :: sph_ray(:)                   ! ray object (1 per thread)
       type(image_tree_node),pointer :: temp_node            ! temporary image tree node 
-      integer(kind=int_kind) :: i,j                         ! counter
+      integer(kind=int_kind) :: i,j,k                       ! counter
       integer(kind=int_kind) :: num_threads                 ! number of OpenMP threads
       integer(kind=int_kind) :: thread_num                  ! thread number
       integer(kind=int_kind) :: node_id                     ! node id variable
@@ -105,28 +102,37 @@ module m_datacube
       real(kind=rel_kind),allocatable :: aabb_array(:,:,:)  ! array of 2d axis aligned bounding boxes
       real(kind=rel_kind),allocatable :: i_lambda_array(:,:)! array of intensities
       real(kind=rel_kind),allocatable :: j_lambda_array(:,:)! dust emissivity array
+      real(kind=rel_kind),allocatable :: t_array(:)        ! array of temperatures
+      real(kind=rel_kind),allocatable :: w_array(:)         ! array of weights
       real(kind=rel_kind),allocatable :: sigma_array(:)     ! array of column densities
+      real(kind=rel_kind),allocatable :: t_hist_array(:,:)  ! array of temperature histograms
+      real(kind=rel_kind),allocatable :: t_moment_array(:,:)! array of temperature moments (element 1 is the mean)
+      
+      ! associated parameters object
+      self%sim_params=>sim_params
       
       ! set number of pixels (nearest power of 2)
-      dc_max_level=ceiling(log(real(max(n_x,n_y),rel_kind))/log(2._rel_kind))
+      dc_max_level=ceiling(log(real(max(self%sim_params%datacube_n_x,self%sim_params%datacube_n_y),rel_kind))/log(2._rel_kind))
+            
+      self%lambda=string_to_real(self%sim_params%datacube_lambda_string)
             
       ! allocate arrays
       allocate(self%x(2**dc_max_level))
       allocate(self%y(2**dc_max_level))
-      allocate(self%lambda(size(lambda_array)))
       allocate(self%i_lambda(size(self%lambda),size(self%x),size(self%y)))
       allocate(self%sigma(size(self%x),size(self%y)))
       allocate(self%image_tree_root)
       allocate(self%image_tree_particle_array(size(sph_tree%particle_array)))
-      allocate(self%bg_i_lambda(size(lambda_array)))
+      allocate(self%bg_i_lambda(size(self%lambda)))
       if (present(point_sources)) allocate(self%ps_l_lambda(2,size(self%lambda),size(point_sources)))
       
+      
       ! set up coordinates
-      dx=(x_max-x_min)/real(size(self%x)+1,rel_kind)
-      dy=(y_max-y_min)/real(size(self%y)+1,rel_kind)
-      self%x=lin_space(x_min,x_min+size(self%x)*dx,size(self%x))+0.5_rel_kind*dx
-      self%y=lin_space(y_min,y_min+size(self%y)*dy,size(self%y))+0.5_rel_kind*dy
-      self%lambda=lambda_array
+      dx=(self%sim_params%datacube_x_max-self%sim_params%datacube_x_min)/real(size(self%x)+1,rel_kind)
+      dy=(self%sim_params%datacube_y_max-self%sim_params%datacube_y_min)/real(size(self%y)+1,rel_kind)
+      self%x=lin_space(self%sim_params%datacube_x_min,self%sim_params%datacube_x_min+size(self%x)*dx,size(self%x))+0.5_rel_kind*dx
+      self%y=lin_space(self%sim_params%datacube_y_min,self%sim_params%datacube_y_min+size(self%y)*dy,size(self%y))+0.5_rel_kind*dy
+      if (self%sim_params%datacube_ppmap) self%t_bins=string_to_real(self%sim_params%datacube_t_string)
 
       if (present(v_ob_in)) then
          v_ob=v_ob_in
@@ -141,19 +147,19 @@ module m_datacube
       
       ! transform 1: altitude
       ! move z axis towards y axis
-      img_y_unit=rotate_vector(img_y_unit,(/1._rel_kind,0._rel_kind,0._rel_kind/),angle(1))
-      img_z_unit=rotate_vector(img_z_unit,(/1._rel_kind,0._rel_kind,0._rel_kind/),angle(1))
+      img_y_unit=rotate_vector(img_y_unit,(/1._rel_kind,0._rel_kind,0._rel_kind/),self%sim_params%datacube_angles(1))
+      img_z_unit=rotate_vector(img_z_unit,(/1._rel_kind,0._rel_kind,0._rel_kind/),self%sim_params%datacube_angles(1))
       
       ! transform 2: azimuth
       ! move y axis towards x axis
-      img_x_unit=rotate_vector(img_x_unit,(/0._rel_kind,0._rel_kind,1._rel_kind/),angle(2))
-      img_y_unit=rotate_vector(img_y_unit,(/0._rel_kind,0._rel_kind,1._rel_kind/),angle(2))
-      img_z_unit=rotate_vector(img_z_unit,(/0._rel_kind,0._rel_kind,1._rel_kind/),angle(2))
+      img_x_unit=rotate_vector(img_x_unit,(/0._rel_kind,0._rel_kind,1._rel_kind/),self%sim_params%datacube_angles(2))
+      img_y_unit=rotate_vector(img_y_unit,(/0._rel_kind,0._rel_kind,1._rel_kind/),self%sim_params%datacube_angles(2))
+      img_z_unit=rotate_vector(img_z_unit,(/0._rel_kind,0._rel_kind,1._rel_kind/),self%sim_params%datacube_angles(2))
       
       ! transform 3: rotation
       ! rotate image
-      img_x_unit=rotate_vector(img_x_unit,img_z_unit,angle(3))
-      img_y_unit=rotate_vector(img_y_unit,img_z_unit,angle(3))
+      img_x_unit=rotate_vector(img_x_unit,img_z_unit,self%sim_params%datacube_angles(3))
+      img_y_unit=rotate_vector(img_y_unit,img_z_unit,self%sim_params%datacube_angles(3))
       
       
       ! set up image tree particles
@@ -164,13 +170,18 @@ module m_datacube
       
       ! build image tree
       node_id=0
-      call self%image_tree_root%initialise(self%image_tree_particle_array,reshape((/x_min,y_min,x_max,y_max/),(/2,2/)),node_id)
+      call self%image_tree_root%initialise(self%image_tree_particle_array,reshape((/self%sim_params%datacube_x_min,&
+         &self%sim_params%datacube_y_min,self%sim_params%datacube_x_max,self%sim_params%datacube_y_max/),(/2,2/)),node_id)
       allocate(aabb_array(2,2,self%image_tree_root%n_leaf))
-      allocate(i_lambda_array(size(lambda_array),self%image_tree_root%n_leaf))
-      allocate(j_lambda_array(size(lambda_array),self%image_tree_root%n_leaf))
+      allocate(i_lambda_array(size(self%lambda),self%image_tree_root%n_leaf))
+      allocate(j_lambda_array(size(self%lambda),self%image_tree_root%n_leaf))
       allocate(sigma_array(self%image_tree_root%n_leaf))
       aabb_array=self%image_tree_root%get_leaf_aabb()
-
+      
+      if (self%sim_params%datacube_ppmap) then
+         allocate(t_hist_array(size(self%t_bins)-1,self%image_tree_root%n_leaf))
+         allocate(t_moment_array(self%sim_params%datacube_n_t_moments,self%image_tree_root%n_leaf))
+      end if
 
       ! set background intensity
       if (present(background)) then
@@ -187,7 +198,7 @@ module m_datacube
          call sph_ray(i)%initialise(sph_kernel,sph_tree,dust_prop)
       end do
       
-      !$omp parallel num_threads(num_threads) default(shared) private(i,j,pix_position,thread_num)
+      !$omp parallel num_threads(num_threads) default(shared) private(i,j,k,pix_position,thread_num,t_array,w_array)
          !$omp do schedule(dynamic)
             do j=1,self%image_tree_root%n_leaf
             
@@ -208,14 +219,39 @@ module m_datacube
                ! set column density
                sigma_array(j)=sum(sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%sigma*&
                   &sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%f_sub)
-             
+                  
+               if (self%sim_params%datacube_ppmap) then
+               
+                  t_array=dust_prop%dust_temperature(sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%a_dot)
+                  w_array=sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%sigma*&
+                     &sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%f_sub
+               
+                  ! calculate temperature differential column density
+                  if (sph_ray(thread_num)%n_item>0) then
+                     t_hist_array(:,j)=make_hist(t_array,self%t_bins,w_array)
+                  else
+                     t_hist_array(:,j)=0._rel_kind
+                  end if
+                  
+                  if (self%sim_params%datacube_log_moments) t_array=log10(t_array)
+                     
+                  ! calculate column weighted temperature mean
+                  t_moment_array(1,j)=mean(t_array,w_array)
+                  
+                  ! calculate column weighted temperature central moments
+                  do k=2,size(t_moment_array,1)
+                     t_moment_array(k,j)=dist_moment(t_array,t_moment_array(1,j),k,w_array)
+                  end do
+
+               end if
+                  
             end do
       
          !$omp end do
       !$omp end parallel
       
       ! copy i_lambda_array and sigma_array to tree
-      call self%image_tree_root%set_leaf_i_lambda(i_lambda_array,j_lambda_array,sigma_array)     
+      call self%image_tree_root%set_leaf_i_lambda(i_lambda_array,j_lambda_array,sigma_array,t_hist_array,t_moment_array)     
       
       
       ! calculate point source luminosities
@@ -277,14 +313,12 @@ module m_datacube
    end subroutine
    
    ! convolve datacube images with Gaussian PSF
-   subroutine psf_convolve(self,distance,fwhm_array)
+   subroutine psf_convolve(self)
 
       include "fftw3.f03"
 
       ! argument declarations
       class(datacube),intent(inout) :: self                                ! datacube object
-      real(kind=rel_kind) :: distance                                      ! observer source distance
-      real(kind=rel_kind) :: fwhm_array(:)                                 ! array of beam fwhm (arcseconds)
 
       ! variable declarations
       integer(kind=int_kind) :: i,j,k                                      ! counter
@@ -294,8 +328,11 @@ module m_datacube
       real(kind=rel_kind) :: sigma                                         ! standard deviation of absolute beam size
       real(kind=rel_kind) :: sigma_conv                                    ! fwhm -> sigma conversion factor
       real(kind=rel_kind) :: psf_norm                                      ! psf normalisation
+      real(kind=rel_kind),allocatable :: fwhm_array(:)                     ! full width half maximum array
       complex(kind=cpx_kind) :: intensity_map(size(self%x),size(self%y))   ! intensity map
       complex(kind=cpx_kind) :: psf_map(size(self%x),size(self%y))         ! point spread function
+
+      fwhm_array=string_to_real(self%sim_params%datacube_fwhm_string)
 
       ! check fwhm array has correct number of elements
       if (size(fwhm_array)/=size(self%lambda)) then
@@ -304,7 +341,7 @@ module m_datacube
       end if
 
       centre=0.5_rel_kind*(/self%x(1)+self%x(size(self%x)),self%y(1)+self%y(size(self%y))/)
-      sigma_conv=distance*arcsec_rad/fwhm_sigma
+      sigma_conv=self%sim_params%datacube_distance*arcsec_rad/fwhm_sigma
 
       do i=1,size(self%lambda)
  
@@ -355,11 +392,10 @@ module m_datacube
 
    end subroutine
    
-   subroutine write_out(self,run_id)
+   subroutine write_out(self)
    
       ! argument declarations
       class(datacube),intent(in) :: self                                ! datacube object
-      character(kind=chr_kind,len=string_length),intent(in) :: run_id   ! simulation run id
       
       ! variable declarations
       integer(kind=int_kind) :: i,j                                     ! counter
@@ -368,19 +404,32 @@ module m_datacube
       character(kind=chr_kind,len=string_length) :: format_string       ! format string
       
       ! write out leaf cell mosaic
-      write(file_name,"(A)") trim(run_id)//"/mosaic.dat"
+      write(file_name,"(A)") trim(self%sim_params%sim_id)//"/mosaic.dat"
       open(1,file=trim(file_name))
       
+      j=0
       write(1,"(A)") "# 1 x_min (cm)"
       write(1,"(A)") "# 2 y_min (cm)"
       write(1,"(A)") "# 3 x_max (cm)"
       write(1,"(A)") "# 4 y_max (cm)"
-      write(1,"(A)") "# 5 sigma (g cm^-3)"
+      write(1,"(A)") "# 5 sigma (g cm^-2)"
+      if (self%sim_params%datacube_ppmap) then
+         do i=1,size(self%t_bins)-1
+            j=j+1
+            write(1,"(A,I0,A,F6.2,A,F6.2,A)") "# ",5+j," sigma_T [",self%t_bins(i),"K < T <= ",self%t_bins(i+1),"] (g cm^-2 K^-1)"
+         end do
+         j=j+1
+         write(1,"(A,I0,A)") "# ",5+j," T mean (K)"
+         do i=2,self%sim_params%datacube_n_t_moments
+            j=j+1
+            write(1,"(A,I0,A,I0,A,I0,A)") "# ",5+j," T central moment ",i," (K)"
+         end do
+      end if
       do i=1,size(self%lambda)
-         write(1,"(A,I0,A,E10.4,A)") "# ",i+5," I_lambda=",self%lambda(i)," micron (erg s^-1 sr^-1 cm^-2 micron^-1)"
+         write(1,"(A,I0,A,E10.4,A)") "# ",5+i+j," I_lambda=",self%lambda(i)," micron (erg s^-1 sr^-1 cm^-2 micron^-1)"
       end do
       do i=1,size(self%lambda)
-         write(1,"(A,I0,A,E10.4,A)") "# ",i+5+size(self%lambda),&
+         write(1,"(A,I0,A,E10.4,A)") "# ",5+i+j+size(self%lambda),&
             &" J_lambda=",self%lambda(i)," micron (erg s^-1 sr^-1 cm^-2 micron^-1)"
       end do
       write(1,*)
@@ -389,7 +438,7 @@ module m_datacube
       close(1)
       
       ! write out datacube
-      write(file_name,"(A)") trim(run_id)//"/datacube.dat"
+      write(file_name,"(A)") trim(self%sim_params%sim_id)//"/datacube.dat"
       open(1,file=trim(file_name))
       write(format_string,"(A,I0,A)") "(",3+size(self%i_lambda),"(E25.17))"
       
@@ -409,7 +458,7 @@ module m_datacube
       close(1)
       
       ! write out spectrum
-      write(file_name,"(A)") trim(run_id)//"/spectrum.dat"
+      write(file_name,"(A)") trim(self%sim_params%sim_id)//"/spectrum.dat"
       open(1,file=trim(file_name))
       if (allocated(self%ps_l_lambda)) then
          n_ps=size(self%ps_l_lambda,3)

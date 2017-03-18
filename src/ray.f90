@@ -95,6 +95,7 @@ module m_ray
       procedure,non_overridable,private :: a_sph
       procedure,non_overridable,private :: h_sph
       procedure,non_overridable,private :: ave_inv_mfp_sph
+      procedure,non_overridable,private :: grad_ave_inv_mfp_sph
       procedure,non_overridable,private :: tau_sph
       procedure,non_overridable,private :: inv_mfp
       procedure,non_overridable,private :: grad_inv_mfp
@@ -166,7 +167,7 @@ module m_ray
    end subroutine
    
    ! follow a luminosity packet
-   subroutine follow(self,origin_in,direction_in,v_em_in,lambda_em_in,l_chunk,use_mrw,mrw_gamma,n_tau)
+   subroutine follow(self,origin_in,direction_in,v_em_in,lambda_em_in,l_chunk,use_mrw,accurate_mrw,mrw_gamma,n_tau)
    
       ! argument declarations
       class(ray),intent(inout) :: self                  ! ray object
@@ -176,6 +177,7 @@ module m_ray
       real(kind=rel_kind),intent(in) :: lambda_em_in    ! emission wavelength
       real(kind=rel_kind),intent(in) :: l_chunk         ! chunk of luminosity
       logical(kind=log_kind),intent(in) :: use_mrw      ! use modified random walk
+      logical(kind=log_kind),intent(in) :: accurate_mrw ! only perform mrw over scales where normalised opacity grad <= 1
       real(kind=rel_kind),intent(in) :: mrw_gamma       ! mrw gamma parameter
       real(kind=rel_kind),intent(inout) :: n_tau        ! number of optical depths travelled (initialised before sub. call)
       
@@ -188,6 +190,7 @@ module m_ray
       real(kind=rel_kind) :: v_ob(n_dim)                ! velocity of observer
       real(kind=rel_kind) :: lambda_em                  ! emission wavelength
       real(kind=rel_kind) :: length                     ! length of ray
+      real(kind=rel_kind) :: flat_length                ! length over which opacity gradient is small
       real(kind=rel_kind) :: tau                        ! number of optical depths to travel
       real(kind=rel_kind) :: tau_est                    ! estimated value of tau
       real(kind=rel_kind) :: inv_mfp                    ! inverse mean free path (density * kappa_ext)
@@ -204,6 +207,9 @@ module m_ray
       real(kind=rel_kind) :: lambda_ob                  ! rest frame wavelength
       real(kind=rel_kind) :: h                          ! smoothing length
       real(kind=rel_kind) :: ave_inv_mfp                ! planck averaged inverse mean free path
+      real(kind=rel_kind) :: grad_ave_inv_mfp(n_dim)    ! gradient of planck averaged inverse mean free path
+      real(kind=rel_kind) :: mod_grad_ave_inv_mfp       ! magnitude of grad_inv_mfp
+      real(kind=rel_kind) :: cos_theta                  ! angle between direction and grad_ave_inv_mfp
       logical(kind=log_kind) :: extend_ray              ! are we extending a ray?
       logical(kind=log_kind) :: short_ray               ! is ray shorter than sim resolution?
       real(kind=rel_kind) :: mrw_distance               ! distance travelled along modified random walk
@@ -230,39 +236,70 @@ module m_ray
       grad_inv_mfp=0._rel_kind
       h=0._rel_kind
       ave_inv_mfp=0._rel_kind
+      grad_ave_inv_mfp=0._rel_kind
       call self%root_node%sph_inv_mfp(self%sph_kernel,self%dust_prop,&
-         &origin,lambda_em,direction,v_em,inv_mfp,grad_inv_mfp,h,ave_inv_mfp)
+         &origin,lambda_em,direction,v_em,inv_mfp,grad_inv_mfp,h,ave_inv_mfp,grad_ave_inv_mfp)
+      h=merge(h**(-1._rel_kind/real(n_dim,rel_kind)),0._rel_kind,h>0._rel_kind)
          
       call random_number(tau)
       tau=-log(tau)
-         
+      
+      
       ! allocate item list
       if (.not.allocated(self%item)) allocate(self%item(n_ray))
       
       do
-      
-         ! estimate length from local quantities
-         length=min(2._rel_kind*ray_eta*tau/&
-            &(inv_mfp+sqrt(max(inv_mfp**2+2._rel_kind*tau*dot_product(grad_inv_mfp,direction),0._rel_kind))),self%max_length)
 
+         ! estimate length from local quantities
+         if (inv_mfp>0._rel_kind) then
+            length=2._rel_kind*ray_eta*tau/&
+               &(inv_mfp+sqrt(max(inv_mfp**2+2._rel_kind*tau*dot_product(grad_inv_mfp,direction),0._rel_kind)))
+         else
+            length=self%max_length
+         end if
+            
          ! adjust length if it's too short
          if (length<max(self%min_length,h)) then
             short_ray=.true.
             length=max(self%min_length,h)
          else
             short_ray=.false.
-         end if 
+         end if
+         
+
          
          ! check if we need to perform modified random walk
          if (short_ray.and.use_mrw.and.(.not.extend_ray)) then
          
+            if (accurate_mrw) then
+               mod_grad_ave_inv_mfp=norm2(grad_ave_inv_mfp)
+               flat_length=min(length,0.5_rel_kind*ave_inv_mfp/mod_grad_ave_inv_mfp)
+            else
+               flat_length=length
+            end if
+            
             ! check if mean free path is less then gamma * h
-            if (length*ave_inv_mfp>mrw_gamma) then
+            if (flat_length*ave_inv_mfp>mrw_gamma) then
             
                ! perform modified random walk
-            
+
                ! set new isotropic direction
                direction=self%dust_prop%random_emission_direction()
+               
+               
+               ! adjust length if applying accurate MRW
+               if (accurate_mrw) then
+               
+                              
+                  ! set length based on direction of density gradient
+                  cos_theta=dot_product(direction,grad_ave_inv_mfp/mod_grad_ave_inv_mfp)
+               
+                  !normalise mod_grad_ave_inv_mfp
+                  mod_grad_ave_inv_mfp=cos_theta*flat_length*mod_grad_ave_inv_mfp/ave_inv_mfp
+               
+                  ! calculate length based on direction
+                  length=flat_length*(-1._rel_kind+sqrt(1._rel_kind+2._rel_kind*mod_grad_ave_inv_mfp))/(mod_grad_ave_inv_mfp)
+               end if
                
                ! initialise path
                call self%path%initialise(origin,direction,length)
@@ -312,7 +349,7 @@ module m_ray
                   end if
             
                end do
-            
+               
                ! set new position, direction, wavelength
                origin=origin+self%path%direction*self%path%length
                direction=self%dust_prop%mrw_random_direction(direction)
@@ -325,6 +362,7 @@ module m_ray
                grad_inv_mfp=self%grad_inv_mfp()
                h=self%h_sph()
                ave_inv_mfp=self%ave_inv_mfp_sph()
+               grad_ave_inv_mfp=self%grad_ave_inv_mfp_sph()
                call random_number(tau)
                tau=-log(tau)
             
@@ -361,6 +399,7 @@ module m_ray
          
             ! set new properties
             ! new optical depth and origin
+
             tau=tau-tau_est
             origin=origin+direction*length
             call self%update_absorption_rate()
@@ -458,6 +497,8 @@ module m_ray
          grad_inv_mfp=self%grad_inv_mfp()
          h=self%h_sph()
          if (use_mrw) ave_inv_mfp=self%ave_inv_mfp_sph()
+         if (use_mrw) grad_ave_inv_mfp=self%grad_ave_inv_mfp_sph()
+         
      
       end do
      
@@ -869,10 +910,10 @@ module m_ray
       ! result declaration
       real(kind=rel_kind) :: h_value                    ! smoothing length path%length      
 
-      h_value=sum(self%item(:self%n_item)%m*&
-         &self%item(:self%n_item)%inv_rho*&
-         &self%item(:self%n_item)%inv_h**(n_dim-1)*&
+      h_value=sum(self%item(:self%n_item)%inv_h**(n_dim)*&
          &self%sph_kernel%w(self%item(:self%n_item)%s_1))
+
+      h_value=merge(h_value**(-1._rel_kind/real(n_dim,rel_kind)),0._rel_kind,h_value>0._rel_kind)
       
       return
    
@@ -885,7 +926,7 @@ module m_ray
       class(ray),intent(in) :: self                     ! ray object
       
       ! result declaration
-      real(kind=rel_kind) :: ave_inv_mfp_value          ! albedo path%length      
+      real(kind=rel_kind) :: ave_inv_mfp_value          ! planck average inverse mean free path   
 
       ave_inv_mfp_value=sum(self%item(:self%n_item)%m*&
          &self%item(:self%n_item)%inv_h**(n_dim)*&
@@ -895,6 +936,36 @@ module m_ray
       return
    
    end function
+   
+   
+   pure function grad_ave_inv_mfp_sph(self) result (grad_ave_inv_mfp_value)
+   
+      ! argument declarations
+      class(ray),intent(in) :: self                     ! ray object
+      
+      ! result declaration
+      real(kind=rel_kind) :: grad_ave_inv_mfp_value(n_dim)  ! grad_ave_inv_mfp at path%length
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i                       ! counter
+    
+      grad_ave_inv_mfp_value=0._rel_kind
+      do i=1,self%n_item
+      
+         grad_ave_inv_mfp_value=grad_ave_inv_mfp_value+self%item(i)%m*&
+            &self%item(i)%inv_h**(n_dim+2)*&
+            &self%dust_prop%mrw_inv_planck_ext(self%item(i)%a_dot)*self%item(i)%f_sub*&
+            &self%sph_kernel%dw_dr(self%item(i)%s_1)*&
+            &(self%path%terminus-self%item(i)%r)/self%item(i)%s_1       
+      
+      end do
+      
+      return
+   
+   end function
+   
+   
+   
    
    ! get the optical depth along ray
    pure function tau_sph(self) result (tau_value)

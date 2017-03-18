@@ -68,6 +68,7 @@ module m_constants_parameters
    real(kind=rel_kind),parameter :: pi=4._rel_kind*atan(1._rel_kind)    ! 3.1412...
    real(kind=rel_kind),parameter :: one_third=1._rel_kind/3._rel_kind   ! 1/3
    real(kind=rel_kind),parameter :: root_two=sqrt(2._rel_kind)          ! sqrt of two
+   real(kind=rel_kind),parameter :: root_three=sqrt(3._rel_kind)        ! sqrt of three
    real(kind=rel_kind),parameter :: arcsec_rad=pi/6.48e+5_rel_kind      ! 1 arcsec in radians
    real(kind=rel_kind),parameter :: fwhm_sigma=2._rel_kind*sqrt(2._rel_kind*log(2._rel_kind))   ! FWHM in units of sigma
    
@@ -75,5 +76,6 @@ module m_constants_parameters
    real(kind=rel_kind),parameter :: k_boltz=1.3806488e-23_rel_kind      ! Boltzmann constant [J/K]
    real(kind=rel_kind),parameter :: c_light=2.99792458e+8_rel_kind      ! speed of light [m/s]
    real(kind=rel_kind),parameter :: h_planck=6.6260696e-34_rel_kind     ! Planck constant [J/Hz]
+   real(kind=rel_kind),parameter :: sigma_sb=5.6703668e-08_rel_kind     ! Stefan-Boltzmann constant [W m^-2 K^-4]
 
 end module
