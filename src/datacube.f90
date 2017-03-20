@@ -35,7 +35,6 @@ module m_datacube
    use m_source
    use m_image_tree_node
    use omp_lib
-   use ieee_arithmetic
    
    implicit none
    
@@ -83,7 +82,7 @@ module m_datacube
       
       ! variable declarations
       type(ray),allocatable :: sph_ray(:)                   ! ray object (1 per thread)
-      type(image_tree_node),pointer :: temp_node            ! temporary image tree node 
+      class(image_tree_node),pointer :: temp_node           ! temporary image tree node 
       integer(kind=int_kind) :: i,j,k                       ! counter
       integer(kind=int_kind) :: num_threads                 ! number of OpenMP threads
       integer(kind=int_kind) :: thread_num                  ! thread number

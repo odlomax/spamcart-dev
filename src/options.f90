@@ -41,12 +41,10 @@ module m_options
       integer(kind=int_kind) :: sim_n_packet_point                            ! number of point source luminosity packets per iteration
       integer(kind=int_kind) :: sim_n_packet_external                         ! number of external radiation field luminosity packets per iteration
       logical(kind=log_kind) :: sim_equal_packets_per_point                   ! equal number packets per point source
+      real(kind=rel_kind) :: sim_n_packet_multiplier                          ! number of packets in first iterations reduced by this amount
       integer(kind=int_kind) :: sim_n_it                                      ! number of iterations
-      logical(kind=log_kind) :: sim_restart                                   ! restart sim? (don't use sim_initial_t)
-      real(kind=rel_kind) :: sim_initial_t                                    ! initial background temperature
-      real(kind=rel_kind) :: sim_min_d                                        ! simulation minimum resolvable distance
       logical(kind=log_kind) :: sim_mrw                                       ! use modified random walk for optically thick regions
-      logical(kind=log_kind) :: sim_accurate_mrw                              ! perform MRW on smaller scales (quite slow)
+      logical(kind=log_kind) :: sim_accurate_mrw                              ! perform MRW with opacity gradients (quite slow)
       real(kind=rel_kind) :: sim_mrw_gamma                                    ! mrw gamma variable
       integer(kind=int_kind) :: sim_n_mrw                                     ! number of mrw lookup table points
       integer(kind=int_kind) :: sim_random_seed                               ! simulation random seed (0 uses random operating system data)
@@ -142,11 +140,9 @@ module m_options
       self%sim_id=""
       self%sim_n_packet_point=1000000
       self%sim_n_packet_external=1000000
+      self%sim_n_packet_multiplier=0.1_rel_kind
       self%sim_equal_packets_per_point=.false.
       self%sim_n_it=5
-      self%sim_restart=.true.
-      self%sim_initial_t=10._rel_kind
-      self%sim_min_d=0._rel_kind
       self%sim_mrw=.true.
       self%sim_accurate_mrw=.false.
       self%sim_mrw_gamma=2._rel_kind
@@ -193,7 +189,7 @@ module m_options
       
       ! set datacube  params
       self%datacube_make=.true.
-      self%datacube_convolve=.true.
+      self%datacube_convolve=.false.
       self%datacube_lambda_string="3.6 4.5 5.8 8.0 24. 70. 100. 160. 250. 350. 500."    ! IRAC/MIPS/PACS/SPIRE (micron)
       self%datacube_fwhm_string="1.7 1.7 1.7 1.9 6.0 5.6 6.8 12.0 17.6 23.9 35.2"       ! PSF FWHM (arcsec)
       self%datacube_distance=3.0856776e+18_rel_kind                                 ! distance from source (1 pc)
@@ -282,18 +278,12 @@ module m_options
                   
                case ("sim_equal_packets_per_point")
                   read(param_value,*) self%sim_equal_packets_per_point
+               
+               case ("sim_n_packet_multiplier")
+                  read(param_value,*) self%sim_n_packet_multiplier
                   
                case ("sim_n_it")
                   read(param_value,*) self%sim_n_it
-               
-               case ("sim_restart")
-                  read(param_value,*) self%sim_restart
-                  
-               case ("sim_initial_t")
-                  read(param_value,*) self%sim_initial_t
-                  
-               case ("sim_min_d")
-                  read(param_value,*) self%sim_min_d
                   
                case ("sim_mrw")
                   read(param_value,*) self%sim_mrw

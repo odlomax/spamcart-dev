@@ -266,8 +266,6 @@ module m_ray
             short_ray=.false.
          end if
          
-
-         
          ! check if we need to perform modified random walk
          if (short_ray.and.use_mrw.and.(.not.extend_ray)) then
          
@@ -313,16 +311,17 @@ module m_ray
                call self%stock_sigma()
             
                ! calculate mrw variables
-               mrw_tau=sum(self%item(:self%n_item)%sigma*self%item(:self%n_item)%f_sub*&
-                  &self%dust_prop%mrw_inv_planck_ext(self%item(:self%n_item)%a_dot))
-               mrw_distance=-log(self%dust_prop%mrw_random_y())*self%path%length*3._rel_kind*mrw_tau/pi**2
+               mrw_tau=flat_length*ave_inv_mfp
+
+               ! total photon distance divided by flat_length
+               mrw_distance=-log(self%dust_prop%mrw_random_y())*3._rel_kind*mrw_tau/pi**2
             
                ! update particle absorption rates
                do i=1,self%n_item
                
                   planck_abs=self%dust_prop%mrw_planck_abs(self%item(i)%a_dot)*self%item(i)%f_sub
             
-                  tau_chunk=mrw_distance*self%item(i)%sigma*planck_abs/self%path%length
+                  tau_chunk=mrw_distance*self%item(i)%sigma*planck_abs
                   call atomic_real_add(self%item(i)%particle_ptr%a_dot_new,self%l_chunk*tau_chunk)
                      
                   ! update total optical depth
@@ -337,7 +336,7 @@ module m_ray
                            &self%item(i)%particle_ptr%lambda_array(j),self%item(i)%particle_ptr%lambda_array(j+1))*&
                            &self%item(i)%f_sub
                         
-                        tau_chunk=mrw_distance*self%item(i)%sigma*planck_sca/self%path%length
+                        tau_chunk=mrw_distance*self%item(i)%sigma*planck_sca
                         call atomic_real_add(self%item(i)%particle_ptr%a_dot_scatter_array(j),&
                            &self%l_chunk*tau_chunk)
                            

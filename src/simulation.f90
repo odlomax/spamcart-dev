@@ -123,7 +123,6 @@ module m_simulation
          
          case ("dat")
             call read_in_sph_particles_3d(position,mass,temperature,self%sim_params%sim_cloud_file)
-            if (.not.self%sim_params%sim_restart) temperature=self%sim_params%sim_initial_t
             allocate(self%particle_array(size(position,2)))
             write(*,"(A)") "initialise particles"
             do i=1,size(self%particle_array)
@@ -142,7 +141,7 @@ module m_simulation
       
       write(*,"(A)") "initialise tree"
       allocate(self%sph_tree)
-      call self%sph_tree%initialise(self%particle_array,self%sph_kernel,self%sim_params%sph_eta,self%sim_params%sim_min_d,h_present)
+      call self%sph_tree%initialise(self%particle_array,self%sph_kernel,self%sim_params%sph_eta,h_present)
       
       if (self%sim_params%point_sources) then
       
@@ -266,6 +265,7 @@ module m_simulation
       ! variable declarations
       integer(kind=int_kind) :: i,j,k                             ! counter
       integer(kind=int_kind) :: n_threads                         ! number of available threads
+      integer(kind=int_kind) :: n_packets                         ! number of packets for this iteration
       integer(kind=int_kind) :: n_packets_source                  ! number of packets for individual source
       real(kind=rel_kind) :: total_luminosity                     ! total luminosity of all sources
       real(kind=rel_kind) :: luminosity_chunk                     ! luminosity chunk for each source
@@ -328,11 +328,17 @@ module m_simulation
          
          do i=1,size(self%point_source_array)
          
+         
+            n_packets=int(exp(log(self%sim_params%sim_n_packet_multiplier*self%sim_params%sim_n_packet_point)+&
+               &(real(iteration-1,rel_kind)/real(self%sim_params%sim_n_it-1,rel_kind))*&
+               &log(1._rel_kind/self%sim_params%sim_n_packet_multiplier)))
+            
+                     
             if (self%sim_params%sim_equal_packets_per_point) then
-               n_packets_source=self%sim_params%sim_n_packet_point/size(self%point_source_array)
+               n_packets_source=n_packets/size(self%point_source_array)
             else
                n_packets_source=&
-                  &int(real(self%sim_params%sim_n_packet_point,rel_kind)*self%point_source_array(i)%luminosity/total_luminosity)
+                  &int(real(n_packets,rel_kind)*self%point_source_array(i)%luminosity/total_luminosity)
             end if
             
             n_packets_source=max(1,n_packets_source)
@@ -352,7 +358,7 @@ module m_simulation
                   call atomic_integer_add(k,1)
                   call atomic_real_add(ps_mean_tau(i),tau )
                            
-                  if (mod(k,min(self%sim_params%sim_n_packet_point/100,n_packets_source))==0) &
+                  if (mod(k,min(n_packets/100,n_packets_source))==0) &
                      &write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)") &
                      &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
                      &", star ",i," of ",size(self%point_source_array),&
@@ -370,11 +376,16 @@ module m_simulation
          bg_mean_tau=0._rel_kind
       
          write(*,"(A)") "follow packets from external radiation field"
-         luminosity_chunk=self%isrf_prop%luminosity/real(self%sim_params%sim_n_packet_external,rel_kind)
+         n_packets=int(exp(log(self%sim_params%sim_n_packet_multiplier*self%sim_params%sim_n_packet_external)+&
+            &(real(iteration-1,rel_kind)/real(self%sim_params%sim_n_it-1,rel_kind))*&
+            &log(1._rel_kind/self%sim_params%sim_n_packet_multiplier)))
+         luminosity_chunk=self%isrf_prop%luminosity/real(n_packets,rel_kind)
          k=0
+         
+         
          !$omp parallel do num_threads(n_threads) default(shared) private(j,position,direction,wavelength,tau)
                   
-            do j=1,self%sim_params%sim_n_packet_external
+            do j=1,n_packets
                position=self%isrf_prop%random_position()
                direction=self%isrf_prop%random_direction(position)
                wavelength=self%isrf_prop%random_wavelength()
@@ -387,15 +398,15 @@ module m_simulation
                call atomic_integer_add(k,1)
                call atomic_real_add(bg_mean_tau,tau)
             
-               if (mod(k,min(self%sim_params%sim_n_packet_external/100,self%sim_params%sim_n_packet_external))==0) &
+               if (mod(k,min(n_packets/100,n_packets))==0) &
                   &write(*,"(A,I0,A,I0,A,I0,A,I0)") &
                      &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
-                     &", external rad field, packet ",k," of ",self%sim_params%sim_n_packet_external
+                     &", external rad field, packet ",k," of ",n_packets
             
             end do
                        
          !$omp end parallel do
-         bg_mean_tau=bg_mean_tau/real(self%sim_params%sim_n_packet_external,rel_kind)
+         bg_mean_tau=bg_mean_tau/real(n_packets,rel_kind)
          
       
       end if 
@@ -604,7 +615,6 @@ module m_simulation
       do i=1,size(self%particle_array)
          array_mask(i)=sum((self%particle_array(i)%r-centre)**2)<=radius**2
          self%particle_array(i)%r=self%particle_array(i)%r-centre
-
       end do
       
       ! copy live particles
@@ -617,7 +627,7 @@ module m_simulation
       ! reset particle tree
       call self%sph_tree%destroy()
       call self%sph_tree%initialise(&
-         &self%particle_array,self%sph_kernel,self%sim_params%sph_eta,self%sim_params%sim_min_d,.true._log_kind)
+         &self%particle_array,self%sph_kernel,self%sim_params%sph_eta,.true._log_kind)
          
       ! set luminosities of sources outside sphere to zero
       do i=1,size(self%point_source_array)
