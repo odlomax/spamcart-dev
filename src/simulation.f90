@@ -26,6 +26,7 @@ module m_simulation
 
    use m_kind_parameters
    use m_constants_parameters
+   use m_maths
    use m_atomic_update
    use m_dust
    use m_dust_d03
@@ -39,6 +40,7 @@ module m_simulation
    use m_binary_tree
    use m_kernel
    use m_kernel_m4
+   use m_kernel_m6
    use m_ray
    use m_options
    use m_datacube
@@ -102,8 +104,20 @@ module m_simulation
       self%sim_params=>sim_params
    
       write(*,"(A)") "initialise kernel"
-      allocate(kernel_m4::self%sph_kernel)
-      call self%sph_kernel%initialise()      
+      select case (trim(self%sim_params%sph_kernel))
+         case ("m4")
+            allocate(kernel_m4::self%sph_kernel)
+         case ("m6")
+            allocate(kernel_m6::self%sph_kernel)
+      end select
+      call self%sph_kernel%initialise()
+      
+      open(1,file="kernel.dat")
+      do i=1,size(self%sph_kernel%r_array)
+         write(1,*) self%sph_kernel%r_array(i),self%sph_kernel%w(self%sph_kernel%r_array(i)),&
+            &self%sph_kernel%dw_dr(self%sph_kernel%r_array(i)),self%sph_kernel%d2w_dr2(self%sph_kernel%r_array(i))
+      end do
+      close(1)     
       
       write(*,"(A)") "initialise dust"
       allocate(dust_d03::self%dust_prop)
@@ -190,7 +204,8 @@ module m_simulation
          end select
          
          ! set sublimation radii for point sources
-         call self%point_source_array%set_sublimation_radius(self%dust_prop,self%sim_params%dust_sub_t)
+         call self%point_source_array%set_sublimation_radius(self%dust_prop,self%sim_params%dust_sub_t,&
+            &self%sim_params%point_min_sub_radius)
          
       else
          self%point_source_array=>null()
@@ -279,10 +294,13 @@ module m_simulation
       real(kind=rel_kind) :: particle_luminosity                  ! particle energy emission rate
       real(kind=rel_kind),allocatable :: position_array(:,:)      ! array of positions
       real(kind=rel_kind),allocatable :: ps_mean_tau(:)           ! mean optical depth travelled by point source packets
-      character(kind=chr_kind,len=string_length) :: output_file   ! output file        
+      character(kind=chr_kind,len=string_length) :: output_file   ! output file
       
       ! get number of threads
       n_threads=omp_get_num_procs()
+      
+      ! reset scattered light bins
+      call self%particle_array%reset_a_dot()
       
       ! initialise luminosity packets (one per thread)
       write(*,"(A)") "initialise luminosity packets"
@@ -290,9 +308,6 @@ module m_simulation
       do i=1,n_threads
          call self%lum_packet_array(i)%initialise(self%sph_kernel,self%sph_tree,self%dust_prop)
       end do
-      
-      ! reset scattered light bins
-      call self%particle_array%reset_a_dot()
       
       write(*,"(A)") "set sublimation fraction"
       ! set sublimation fraction
@@ -329,9 +344,13 @@ module m_simulation
          do i=1,size(self%point_source_array)
          
          
-            n_packets=int(exp(log(self%sim_params%sim_n_packet_multiplier*self%sim_params%sim_n_packet_point)+&
-               &(real(iteration-1,rel_kind)/real(self%sim_params%sim_n_it-1,rel_kind))*&
-               &log(1._rel_kind/self%sim_params%sim_n_packet_multiplier)))
+            if (self%sim_params%sim_n_it>1) then
+               n_packets=int(exp(log(self%sim_params%sim_n_packet_multiplier*self%sim_params%sim_n_packet_point)+&
+                  &(real(iteration-1,rel_kind)/real(self%sim_params%sim_n_it-1,rel_kind))*&
+                  &log(1._rel_kind/self%sim_params%sim_n_packet_multiplier)))
+            else
+               n_packets=self%sim_params%sim_n_packet_point
+            end if
             
                      
             if (self%sim_params%sim_equal_packets_per_point) then
@@ -342,7 +361,7 @@ module m_simulation
             end if
             
             n_packets_source=max(1,n_packets_source)
-         
+                     
             luminosity_chunk=self%point_source_array(i)%luminosity/real(n_packets_source,rel_kind)
             k=0
       
@@ -353,12 +372,12 @@ module m_simulation
                   call self%lum_packet_array(omp_get_thread_num()+1)%follow(self%point_source_array(i)%position,&
                      &self%point_source_array(i)%random_direction(),self%point_source_array(i)%velocity,&
                      &self%point_source_array(i)%random_wavelength(),luminosity_chunk,&
-                     &self%sim_params%sim_mrw,self%sim_params%sim_accurate_mrw,self%sim_params%sim_mrw_gamma,tau)
+                     &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma,tau)
                      
                   call atomic_integer_add(k,1)
-                  call atomic_real_add(ps_mean_tau(i),tau )
+                  call atomic_real_add(ps_mean_tau(i),tau)
                            
-                  if (mod(k,min(n_packets/100,n_packets_source))==0) &
+                  if (mod(k,min(max(n_packets/100,1),n_packets_source))==0) &
                      &write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)") &
                      &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
                      &", star ",i," of ",size(self%point_source_array),&
@@ -376,9 +395,13 @@ module m_simulation
          bg_mean_tau=0._rel_kind
       
          write(*,"(A)") "follow packets from external radiation field"
-         n_packets=int(exp(log(self%sim_params%sim_n_packet_multiplier*self%sim_params%sim_n_packet_external)+&
-            &(real(iteration-1,rel_kind)/real(self%sim_params%sim_n_it-1,rel_kind))*&
-            &log(1._rel_kind/self%sim_params%sim_n_packet_multiplier)))
+         if (self%sim_params%sim_n_it>1) then
+            n_packets=int(exp(log(self%sim_params%sim_n_packet_multiplier*self%sim_params%sim_n_packet_external)+&
+               &(real(iteration-1,rel_kind)/real(self%sim_params%sim_n_it-1,rel_kind))*&
+               &log(1._rel_kind/self%sim_params%sim_n_packet_multiplier)))
+         else
+            n_packets=self%sim_params%sim_n_packet_external
+         end if
          luminosity_chunk=self%isrf_prop%luminosity/real(n_packets,rel_kind)
          k=0
          
@@ -393,12 +416,12 @@ module m_simulation
                call self%lum_packet_array(omp_get_thread_num()+1)%follow(position,&
                   &direction,self%isrf_prop%velocity,&
                   &wavelength,luminosity_chunk,&
-                  &self%sim_params%sim_mrw,self%sim_params%sim_accurate_mrw,self%sim_params%sim_mrw_gamma,tau)
+                  &self%sim_params%sim_mrw,self%sim_params%sim_mrw_gamma,tau)
             
                call atomic_integer_add(k,1)
                call atomic_real_add(bg_mean_tau,tau)
             
-               if (mod(k,min(n_packets/100,n_packets))==0) &
+               if (mod(k,min(max(n_packets/100,1),n_packets))==0) &
                   &write(*,"(A,I0,A,I0,A,I0,A,I0)") &
                      &"iteration ",iteration," of ",self%sim_params%sim_n_it,&
                      &", external rad field, packet ",k," of ",n_packets
@@ -534,7 +557,7 @@ module m_simulation
             write(1) self%particle_array(i)%lambda_array
             write(1) self%particle_array(i)%a_dot_scatter_array
          else
-            write(1) 0
+            write(1) 0_int_kind
          end if
          
       end do
@@ -641,6 +664,5 @@ module m_simulation
       return
    
    end subroutine
-
 
 end module

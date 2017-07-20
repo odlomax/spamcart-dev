@@ -39,7 +39,7 @@ module m_kernel
       real(kind=rel_kind),allocatable :: r_array(:)             ! list of radius samples
       real(kind=rel_kind),allocatable :: w_array(:)             ! density lookup table
       real(kind=rel_kind),allocatable :: dw_dr_array(:)         ! density gradient lookup table
-      real(kind=rel_kind),allocatable :: dw_dh_array(:)         ! density gradient lookup table
+      real(kind=rel_kind),allocatable :: d2w_dr2_array(:)       ! density 2nd derivative lookup table
       type(triangular_array) :: sigma_array                     ! column density array
       
       contains
@@ -48,7 +48,7 @@ module m_kernel
       procedure,non_overridable :: destroy
       procedure,non_overridable :: w
       procedure,non_overridable :: dw_dr
-      procedure,non_overridable :: dw_dh
+      procedure,non_overridable :: d2w_dr2
       procedure,non_overridable :: sigma
       
    end type
@@ -74,7 +74,6 @@ module m_kernel
       deallocate(self%r_array)
       deallocate(self%w_array)
       deallocate(self%dw_dr_array)
-      deallocate(self%dw_dh_array)
       call self%sigma_array%destroy()
       
       return
@@ -139,15 +138,15 @@ module m_kernel
    
    end function
    
-   ! kernel density gradient wrt h
-   elemental function dw_dh(self,r) result (dw_dh_value)
+   ! kernel density 2nd derivative wrt r
+   elemental function d2w_dr2(self,r) result (d2w_dr2_value)
    
       ! argument declarations
       class(kernel),intent(in) :: self                          ! kernel object
       real(kind=rel_kind),intent(in) :: r                       ! radius
       
       ! result declaration
-      real(kind=rel_kind) :: dw_dh_value                        ! kernel density gradient
+      real(kind=rel_kind) :: d2w_dr2_value                        ! kernel density gradient
       
       ! variable declarations
       integer(kind=int_kind) :: i                               ! index
@@ -160,8 +159,8 @@ module m_kernel
       i=min(1+int(r_mod*self%inv_dr),size(self%r_array)-1)
       
       ! interpolate value from lookup table
-      dw_dh_value=self%dw_dh_array(i)+&
-         &(self%dw_dh_array(i+1)-self%dw_dh_array(i))*&
+      d2w_dr2_value=self%d2w_dr2_array(i)+&
+         &(self%d2w_dr2_array(i+1)-self%d2w_dr2_array(i))*&
          &(r_mod-self%r_array(i))*self%inv_dr
       
       return

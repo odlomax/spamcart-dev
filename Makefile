@@ -37,7 +37,7 @@ EXECUTABLE=spamcart
 OPTIONS=-Wall -std=f2008 -pedantic
 
 OPTIMISE_OPT=-O3 -flto -march=native
-DEBUG_OPT=-g3 -Og -fcheck=all -fbacktrace -ffpe-trap=invalid,overflow -Wextra
+DEBUG_OPT=-g3 -O0 -fcheck=all -fbacktrace -ffpe-trap=invalid -Wextra
 PARALLEL_OPT=-fopenmp
 PROFILE_OPT=-pg
 
@@ -49,7 +49,7 @@ OPTIONS+= $(PARALLEL_OPT)
 
 SOURCE_DIR=./src/
 
-OBJECTS=parameters.o maths.o io.o string.o options.o atomic_update.o dust.o dust_d03.o triangular_array.o particle.o kernel.o kernel_m4.o line.o ms_star_sed.o source.o source_point_bb.o source_point_custom.o source_point_ms_star.o source_external_bb.o source_external_ps05.o binary_tree_node.o binary_tree.o ray.o image_tree_node.o datacube.o simulation.o main.o
+OBJECTS=parameters.o maths.o io.o string.o options.o atomic_update.o dust.o dust_d03.o triangular_array.o particle.o kernel.o kernel_m4.o kernel_m6.o line.o ms_star_sed.o source.o source_point_bb.o source_point_custom.o source_point_ms_star.o source_external_bb.o source_external_ps05.o binary_tree_node.o binary_tree.o ray.o image_tree_node.o datacube.o simulation.o main.o
 
 COMPILE_LINE=$(COMPILER) $(OPTIONS) -I$(INC_DIR) -c $(SOURCE_DIR)
 
@@ -91,6 +91,9 @@ kernel.o: $(SOURCE_DIR)kernel.f90
 
 kernel_m4.o: $(SOURCE_DIR)kernel_m4.f90
 	$(COMPILE_LINE)kernel_m4.f90
+
+kernel_m6.o: $(SOURCE_DIR)kernel_m6.f90
+	$(COMPILE_LINE)kernel_m6.f90
 
 line.o: $(SOURCE_DIR)line.f90
 	$(COMPILE_LINE)line.f90

@@ -270,12 +270,13 @@ module m_source
    
    end function
    
-   elemental subroutine set_sublimation_radius(self,dust_prop,t_sub)
+   elemental subroutine set_sublimation_radius(self,dust_prop,t_sub,min_r)
    
       ! argument declarations
       class(source),intent(inout) :: self                       ! radiation source object
       class(dust),intent(in) :: dust_prop                       ! dust properties object
       real(kind=rel_kind),intent(in) :: t_sub                   ! dust sublimation temperature
+      real(kind=rel_kind),intent(in) :: min_r                   ! minimum sublimation radius
       
       ! variable declarations
       real(kind=rel_kind) :: abs_rate                           ! dust energy absorption rate per unit mass
@@ -287,7 +288,7 @@ module m_source
       epsilon_star=1._rel_kind-dust_prop%spectrum_albedo(self%wavelength_array,self%intensity_array)
       
       
-      self%radius=sqrt((self%luminosity*epsilon_star)/(4._rel_kind*pi*sigma_sb*1.e+3_rel_kind*t_sub**4*epsilon_t_sub))
+      self%radius=max(min_r,sqrt((self%luminosity*epsilon_star)/(4._rel_kind*pi*sigma_sb*1.e+3_rel_kind*t_sub**4*epsilon_t_sub)))
    
       return
    

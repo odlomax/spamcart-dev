@@ -839,7 +839,7 @@ module m_maths
       end do
       
       ! normalise bins
-      hist=hist/(real(size(values),rel_kind)*(bins(2:)-bins(:size(bins-1))))
+      hist=hist/(real(size(values),rel_kind)*(bins(2:)-bins(:size(bins)-1)))
    
       return
    
@@ -1166,6 +1166,22 @@ module m_maths
       ! result declaration
       real(kind=rel_kind) :: x_new(3)              ! rotated x vector
       
+      x_new=matmul(rotation_matrix_3d(u,theta),x)
+      
+      return   
+   
+   end function
+   
+   ! construct a 3d rotation matrix for an angle about a unit vector
+   pure function rotation_matrix_3d(u,theta) result(r)
+   
+      ! argument declarations
+      real(kind=rel_kind),intent(in) :: u(3)    ! unit vector
+      real(kind=rel_kind),intent(in) :: theta   ! angle of rotation
+      
+      ! result declaration
+      real(kind=rel_kind) :: r(3,3)             ! rotation matrix
+      
       ! variable declarations
       real(kind=rel_kind) :: cos_theta             ! cos(theta)
       real(kind=rel_kind) :: sin_theta             ! sin(theta)
@@ -1173,19 +1189,152 @@ module m_maths
       cos_theta=cos(theta)
       sin_theta=sin(theta)
       
-      x_new=matmul(reshape((/cos_theta+u(1)**2*(1._rel_kind-cos_theta),&
+      r(:,1)=(/cos_theta+u(1)**2*(1._rel_kind-cos_theta),&
          &u(2)*u(1)*(1._rel_kind-cos_theta)+u(3)*sin_theta,&
-         &u(3)*u(1)*(1._rel_kind-cos_theta)-u(2)*sin_theta,&
-         &u(1)*u(2)*(1._rel_kind-cos_theta)-u(3)*sin_theta,&
+         &u(3)*u(1)*(1._rel_kind-cos_theta)-u(2)*sin_theta/)
+      r(:,2)=(/u(1)*u(2)*(1._rel_kind-cos_theta)-u(3)*sin_theta,&
          &cos_theta+u(2)**2*(1._rel_kind-cos_theta),&
-         &u(3)*u(2)*(1._rel_kind-cos_theta)+u(1)*sin_theta,&
-         &u(1)*u(3)*(1._rel_kind-cos_theta)+u(2)*sin_theta,&
+         &u(3)*u(2)*(1._rel_kind-cos_theta)+u(1)*sin_theta/)
+      r(:,3)=(/u(1)*u(3)*(1._rel_kind-cos_theta)+u(2)*sin_theta,&
          &u(2)*u(3)*(1._rel_kind-cos_theta)-u(1)*sin_theta,&
-         &cos_theta+u(3)**2*(1._rel_kind-cos_theta)/),(/3,3/)),x)
+         &cos_theta+u(3)**2*(1._rel_kind-cos_theta)/)
       
-      return   
+      return
    
    end function
+   
+ 
+!-------------------------------------------------------------
+!-------------------------------------------------------------
+
+! POINT DISTRIBUTIONS
+
+!-------------------------------------------------------------
+!-------------------------------------------------------------  
+
+   ! cube of edge length 1 rotated through euler angles 
+   pure function rotated_cube_vertices(angles) result(vertices)
+   
+      ! argument declarations
+      real(kind=rel_kind),intent(in) :: angles(3)  ! three Euler angles
+
+      ! result declaration
+      real(kind=rel_kind) :: vertices(3,8)        ! eight three-dimensional positions
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i                  ! counter
+      real(kind=rel_kind) :: unit_vectors(3,3)     ! three unit vectors
+      real(kind=rel_kind) :: rotation_matrix(3,3)       ! rotation matrix
+      
+      ! set initial vector/vertices
+      vertices(:,1)=(/-0.5_rel_kind,-0.5_rel_kind,-0.5_rel_kind/)
+      vertices(:,2)=(/-0.5_rel_kind,-0.5_rel_kind,0.5_rel_kind/)
+      vertices(:,3)=(/-0.5_rel_kind,0.5_rel_kind,-0.5_rel_kind/)
+      vertices(:,4)=(/-0.5_rel_kind,0.5_rel_kind,0.5_rel_kind/)
+      vertices(:,5)=(/0.5_rel_kind,-0.5_rel_kind,-0.5_rel_kind/)
+      vertices(:,6)=(/0.5_rel_kind,-0.5_rel_kind,0.5_rel_kind/)
+      vertices(:,7)=(/0.5_rel_kind,0.5_rel_kind,-0.5_rel_kind/)
+      vertices(:,8)=(/0.5_rel_kind,0.5_rel_kind,0.5_rel_kind/)
+      unit_vectors(:,1)=(/1._rel_kind,0._rel_kind,0._rel_kind/)
+      unit_vectors(:,2)=(/0._rel_kind,1._rel_kind,0._rel_kind/)
+      unit_vectors(:,3)=(/0._rel_kind,0._rel_kind,1._rel_kind/)
+      
+      ! perform rotation about x axis
+      rotation_matrix=rotation_matrix_3d(unit_vectors(:,1),angles(1))
+      ! rotate vertices
+      do i=1,8
+         vertices(:,i)=matmul(rotation_matrix,vertices(:,i))
+      end do
+      ! rotate unit vectors
+      unit_vectors(:,2)=matmul(rotation_matrix,unit_vectors(:,2))
+      unit_vectors(:,3)=matmul(rotation_matrix,unit_vectors(:,3))
+      
+      ! perform rotation about y axis
+      rotation_matrix=rotation_matrix_3d(unit_vectors(:,2),angles(2))
+      ! rotate vertices
+      do i=1,8
+         vertices(:,i)=matmul(rotation_matrix,vertices(:,i))
+      end do
+      ! rotate unit vectors
+      unit_vectors(:,1)=matmul(rotation_matrix,unit_vectors(:,1))
+      unit_vectors(:,3)=matmul(rotation_matrix,unit_vectors(:,3))
+      
+      ! perform rotation about x axis
+      rotation_matrix=rotation_matrix_3d(unit_vectors(:,3),angles(3))
+      ! rotate vertices
+      do i=1,8
+         vertices(:,i)=matmul(rotation_matrix,vertices(:,i))
+      end do
+
+      return
+
+   end function
+   
+      ! cube of edge length 1 rotated through euler angles 
+   pure function rotated_hcp_ball_vertices(angles) result(vertices)
+   
+      ! argument declarations
+      real(kind=rel_kind),intent(in) :: angles(3)  ! three Euler angles
+
+      ! result declaration
+      real(kind=rel_kind) :: vertices(3,13)        ! eight three-dimensional positions
+      
+      ! variable declarations
+      integer(kind=int_kind) :: i                  ! counter
+      real(kind=rel_kind) :: unit_vectors(3,3)     ! three unit vectors
+      real(kind=rel_kind) :: rotation_matrix(3,3)       ! rotation matrix
+      
+      ! set initial vector/vertices
+      vertices(:,1)=(/0._rel_kind,sqrt(3._rel_kind)/3._rel_kind,-sqrt(6._rel_kind)/3._rel_kind/)
+      vertices(:,2)=(/-0.5_rel_kind,-sqrt(3._rel_kind)/6._rel_kind,-sqrt(6._rel_kind)/3._rel_kind/)
+      vertices(:,3)=(/0.5_rel_kind,-sqrt(3._rel_kind)/6._rel_kind,-sqrt(6._rel_kind)/3._rel_kind/)
+      vertices(:,4)=(/-0._rel_kind,-sqrt(3._rel_kind)/3._rel_kind,sqrt(6._rel_kind)/3._rel_kind/)
+      vertices(:,5)=(/0.5_rel_kind,sqrt(3._rel_kind)/6._rel_kind,sqrt(6._rel_kind)/3._rel_kind/)
+      vertices(:,6)=(/-0.5_rel_kind,sqrt(3._rel_kind)/6._rel_kind,sqrt(6._rel_kind)/3._rel_kind/)
+      vertices(:,7)=(/-0.5_rel_kind,0.5_rel_kind*sqrt(3._rel_kind),0._rel_kind/)
+      vertices(:,8)=(/0.5_rel_kind,0.5_rel_kind*sqrt(3._rel_kind),0._rel_kind/)
+      vertices(:,9)=(/0.5_rel_kind,-0.5_rel_kind*sqrt(3._rel_kind),0._rel_kind/)
+      vertices(:,10)=(/-0.5_rel_kind,-0.5_rel_kind*sqrt(3._rel_kind),0._rel_kind/)
+      vertices(:,11)=(/-1._rel_kind,0._rel_kind,0._rel_kind/)
+      vertices(:,12)=(/1._rel_kind,0._rel_kind,0._rel_kind/)
+      vertices(:,13)=0._rel_kind
+      
+      
+      unit_vectors(:,1)=(/1._rel_kind,0._rel_kind,0._rel_kind/)
+      unit_vectors(:,2)=(/0._rel_kind,1._rel_kind,0._rel_kind/)
+      unit_vectors(:,3)=(/0._rel_kind,0._rel_kind,1._rel_kind/)
+      
+      ! perform rotation about x axis
+      rotation_matrix=rotation_matrix_3d(unit_vectors(:,1),angles(1))
+      ! rotate vertices
+      do i=1,12
+         vertices(:,i)=matmul(rotation_matrix,vertices(:,i))
+      end do
+      ! rotate unit vectors
+      unit_vectors(:,2)=matmul(rotation_matrix,unit_vectors(:,2))
+      unit_vectors(:,3)=matmul(rotation_matrix,unit_vectors(:,3))
+      
+      ! perform rotation about y axis
+      rotation_matrix=rotation_matrix_3d(unit_vectors(:,2),angles(2))
+      ! rotate vertices
+      do i=1,12
+         vertices(:,i)=matmul(rotation_matrix,vertices(:,i))
+      end do
+      ! rotate unit vectors
+      unit_vectors(:,1)=matmul(rotation_matrix,unit_vectors(:,1))
+      unit_vectors(:,3)=matmul(rotation_matrix,unit_vectors(:,3))
+      
+      ! perform rotation about x axis
+      rotation_matrix=rotation_matrix_3d(unit_vectors(:,3),angles(3))
+      ! rotate vertices
+      do i=1,12
+         vertices(:,i)=matmul(rotation_matrix,vertices(:,i))
+      end do
+
+      return
+
+   end function
+   
    
 !-------------------------------------------------------------
 !-------------------------------------------------------------

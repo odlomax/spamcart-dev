@@ -306,20 +306,37 @@ module m_binary_tree_node
    end function
    
    ! peform sph scatter to calculate a quantity
-   pure recursive subroutine sph_scatter(self,sph_kernel,r,v,a_dot,rho)
+   pure recursive subroutine sph_scatter(self,sph_kernel,r,a_dot,rho,n_sph,dust_vol_ext,&
+      &grad_a_dot,grad_rho,grad_n_sph,grad_dust_vol_ext,del_a_dot,del_rho,del_n_sph,del_dust_vol_ext,dust_prop)
    
       ! argument declarations
       class(binary_tree_node),intent(in) :: self                ! binary tree node object
       class(kernel),intent(in) :: sph_kernel                    ! sph kernel object
       real(kind=rel_kind),intent(in) :: r(n_dim)                ! position
-      real(kind=rel_kind),intent(inout),optional :: v(n_dim)    ! velocity
-      real(kind=rel_kind),intent(inout),optional :: a_dot       ! energy absorption rate
+      real(kind=rel_kind),intent(inout),optional :: a_dot       ! energy absorption rate per unit volume
       real(kind=rel_kind),intent(inout),optional :: rho         ! density
+      real(kind=rel_kind),intent(inout),optional :: n_sph       ! particle number density
+      real(kind=rel_kind),intent(inout),optional :: dust_vol_ext! dust volume extinction coefficient
+      real(kind=rel_kind),intent(inout),optional :: grad_a_dot(n_dim) ! gradient of a_dot
+      real(kind=rel_kind),intent(inout),optional :: grad_rho(n_dim)   ! gradient of rho
+      real(kind=rel_kind),intent(inout),optional :: grad_n_sph(n_dim) ! gradient of n_sph
+      real(kind=rel_kind),intent(inout),optional :: grad_dust_vol_ext(n_dim) ! gradient of dust_vol_ext
+      real(kind=rel_kind),intent(inout),optional :: del_a_dot         ! laplacian of a_dot
+      real(kind=rel_kind),intent(inout),optional :: del_rho           ! laplacian of rho
+      real(kind=rel_kind),intent(inout),optional :: del_n_sph         ! laplacian of n_sph
+      real(kind=rel_kind),intent(inout),optional :: del_dust_vol_ext  ! laplacian of dust_vol_ext
+      class(dust),intent(in),optional :: dust_prop              ! dust object
       
       ! variable declarations
       integer(kind=int_kind) :: i                               ! counter
+      real(kind=rel_kind) :: mag_r                              ! distance
+      real(kind=rel_kind) :: s                                  ! normalised distance
       real(kind=rel_kind) :: w                                  ! kernel density
-      real(kind=rel_kind) :: w_dv                               ! kernel mass
+      real(kind=rel_kind) :: dw_dr                              ! first derivative of kernel density wrt r
+      real(kind=rel_kind) :: d2w_dr2                            ! second derivative of kernel density wrt r
+      real(kind=rel_kind) :: grad_w(n_dim)                      ! kernel gradient
+      real(kind=rel_kind) :: del_w                              ! kernel laplacian
+      real(kind=rel_kind) :: dust_mass_ext                      ! Planck weighted dust mass extinction
       
       ! check if position is within aabb of node
       if (any(r<self%aabb(:,1)).or.any(r>self%aabb(:,2))) return
@@ -327,23 +344,48 @@ module m_binary_tree_node
       if (associated(self%left_node)) then
       
          ! recurse down tree
-         call self%left_node%sph_scatter(sph_kernel,r,v,a_dot,rho)
-         call self%right_node%sph_scatter(sph_kernel,r,v,a_dot,rho)
+         call self%left_node%sph_scatter(sph_kernel,r,a_dot,rho,n_sph,dust_vol_ext,&
+            &grad_a_dot,grad_rho,grad_n_sph,grad_dust_vol_ext,del_a_dot,del_rho,del_n_sph,del_dust_vol_ext,dust_prop)
+         call self%right_node%sph_scatter(sph_kernel,r,a_dot,rho,n_sph,dust_vol_ext,&
+            &grad_a_dot,grad_rho,grad_n_sph,grad_dust_vol_ext,del_a_dot,del_rho,del_n_sph,del_dust_vol_ext,dust_prop)
          
       else
       
          ! calculate quantities from leaf
          do i=1,size(self%particle_array)
          
-            w=sph_kernel%w&
-               (sqrt(sum((r-self%particle_array(i)%r)**2))*self%particle_array(i)%inv_h)*&
-               &self%particle_array(i)%inv_h**(n_dim)
-            w_dv=w*self%particle_array(i)%m*self%particle_array(i)%inv_rho
-            
-            if (present(v)) v=v+self%particle_array(i)%v*w_dv
-            if (present(a_dot)) a_dot=a_dot+self%particle_array(i)%a_dot*w_dv
-            if (present(rho)) rho=rho+self%particle_array(i)%m*w
+            mag_r=max(norm2(r-self%particle_array(i)%r),epsilon(0._rel_kind)*self%particle_array(i)%h)
+            s=mag_r*self%particle_array(i)%inv_h
+            w=sph_kernel%w(s)*self%particle_array(i)%inv_h**(n_dim)
+            dw_dr=sph_kernel%dw_dr(s)*self%particle_array(i)%inv_h**(n_dim+1)
+            d2w_dr2=sph_kernel%d2w_dr2(s)*self%particle_array(i)%inv_h**(n_dim+2)
+            grad_w=dw_dr*(r-self%particle_array(i)%r)/mag_r
+            del_w=d2w_dr2+real(n_dim-1._rel_kind)*dw_dr/mag_r
                
+               
+            dust_mass_ext=0._rel_kind
+            if (present(dust_prop)) dust_mass_ext=dust_prop%mrw_planck_ext(self%particle_array(i)%a_dot)
+            
+            if (present(a_dot)) a_dot=a_dot+self%particle_array(i)%a_dot*self%particle_array(i)%m*w
+            if (present(rho)) rho=rho+self%particle_array(i)%m*w
+            if (present(n_sph)) n_sph=n_sph+w
+            if (present(dust_vol_ext).and.present(dust_prop)) dust_vol_ext=dust_vol_ext+dust_mass_ext*&
+               &self%particle_array(i)%m*self%particle_array(i)%f_sub*w
+               
+            if (present(grad_a_dot)) grad_a_dot=grad_a_dot+self%particle_array(i)%a_dot*&
+               &self%particle_array(i)%m*grad_w
+            if (present(grad_rho)) grad_rho=grad_rho+self%particle_array(i)%m*grad_w
+            if (present(grad_n_sph)) grad_n_sph=grad_n_sph+grad_w
+            if (present(grad_dust_vol_ext).and.present(dust_prop)) grad_dust_vol_ext=grad_dust_vol_ext+dust_mass_ext*&
+               &self%particle_array(i)%m*self%particle_array(i)%f_sub*grad_w
+               
+            if (present(del_a_dot)) del_a_dot=del_a_dot+self%particle_array(i)%a_dot*&
+               &self%particle_array(i)%m*del_w
+            if (present(del_rho)) del_rho=del_rho+self%particle_array(i)%m*del_w
+            if (present(del_n_sph)) del_n_sph=del_n_sph+del_w
+            if (present(del_dust_vol_ext).and.present(dust_prop)) del_dust_vol_ext=del_dust_vol_ext+dust_mass_ext*&
+               &self%particle_array(i)%m*self%particle_array(i)%f_sub*del_w
+            
          end do
       
       end if

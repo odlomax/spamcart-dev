@@ -331,6 +331,7 @@ module m_datacube
       complex(kind=cpx_kind) :: intensity_map(size(self%x),size(self%y))   ! intensity map
       complex(kind=cpx_kind) :: psf_map(size(self%x),size(self%y))         ! point spread function
 
+      allocate(fwhm_array(size(string_to_real(self%sim_params%datacube_fwhm_string))))
       fwhm_array=string_to_real(self%sim_params%datacube_fwhm_string)
 
       ! check fwhm array has correct number of elements

@@ -25,6 +25,7 @@
 module m_options
 
    use m_kind_parameters
+   use m_constants_parameters
    
    implicit none
    
@@ -44,7 +45,6 @@ module m_options
       real(kind=rel_kind) :: sim_n_packet_multiplier                          ! number of packets in first iterations reduced by this amount
       integer(kind=int_kind) :: sim_n_it                                      ! number of iterations
       logical(kind=log_kind) :: sim_mrw                                       ! use modified random walk for optically thick regions
-      logical(kind=log_kind) :: sim_accurate_mrw                              ! perform MRW with opacity gradients (quite slow)
       real(kind=rel_kind) :: sim_mrw_gamma                                    ! mrw gamma variable
       integer(kind=int_kind) :: sim_n_mrw                                     ! number of mrw lookup table points
       integer(kind=int_kind) :: sim_random_seed                               ! simulation random seed (0 uses random operating system data)
@@ -77,6 +77,7 @@ module m_options
       real(kind=rel_kind) :: point_lambda_max                                 ! maximum wavelength
       integer(kind=int_kind) :: point_n_lambda                                ! number of wavelengths
       character(kind=chr_kind,len=string_length) :: point_file_list           ! file containing list of luminosity file names
+      real(kind=rel_kind) :: point_min_sub_radius                             ! minimum sublimation radius
       
       ! sph params
       character(kind=chr_kind,len=string_length) :: sph_kernel                ! sph kernel type
@@ -144,7 +145,6 @@ module m_options
       self%sim_equal_packets_per_point=.false.
       self%sim_n_it=5
       self%sim_mrw=.true.
-      self%sim_accurate_mrw=.false.
       self%sim_mrw_gamma=2._rel_kind
       self%sim_n_mrw=1001
       self%sim_random_seed=1
@@ -178,6 +178,7 @@ module m_options
       self%point_lambda_max=1.e+4_rel_kind
       self%point_n_lambda=1001
       self%point_file_list="point_file_list.dat"
+      self%point_min_sub_radius=0._rel_kind
       
       ! sph parameteres
       self%sph_kernel="m4"
@@ -186,6 +187,7 @@ module m_options
       self%sph_lambda_min=1.e-1_rel_kind
       self%sph_lambda_max=1.e+1_rel_kind
       self%sph_n_lambda=11
+      
       
       ! set datacube  params
       self%datacube_make=.true.
@@ -288,9 +290,6 @@ module m_options
                case ("sim_mrw")
                   read(param_value,*) self%sim_mrw
                   
-               case ("sim_accurate_mrw")
-                  read(param_value,*) self%sim_accurate_mrw
-                  
                case ("sim_mrw_gamma")
                   read(param_value,*) self%sim_mrw_gamma
                   
@@ -365,6 +364,9 @@ module m_options
                
                case ("point_file_list")
                   self%point_file_list=param_value
+                  
+               case ("point_min_sub_radius")
+                  read(param_value,*) self%point_min_sub_radius
                   
                case ("sph_kernel")
                   self%sph_kernel=param_value

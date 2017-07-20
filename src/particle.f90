@@ -36,6 +36,7 @@ module m_particle
    ! define particle class
    type :: particle
    
+      integer(kind=int_kind) :: resample_n      ! number of times particle has been resampled
       real(kind=rel_kind) :: r(n_dim)           ! position of particle
       real(kind=rel_kind) :: v(n_dim)           ! velocity of particle
       real(kind=rel_kind) :: m                  ! mass of particle
@@ -52,6 +53,7 @@ module m_particle
       contains
       
       procedure,non_overridable :: initialise
+      procedure,non_overridable :: copy
       procedure,non_overridable :: destroy
       procedure,non_overridable :: normalise_a
       procedure,non_overridable :: reset_a_dot
@@ -76,6 +78,7 @@ module m_particle
       integer(kind=int_kind),intent(in),optional :: n_bins     ! number of intensity bins
       
       ! set quantities
+      self%resample_n=0
       self%r=r
       self%v=v
       self%m=m
@@ -98,6 +101,40 @@ module m_particle
       return
      
    end subroutine
+   
+   elemental function copy(self) result(particle_copy)
+   
+      ! argument declarations
+      class(particle),intent(in) :: self        ! particle object
+      
+      ! result declaration
+      type(particle) :: particle_copy           ! copy of self
+      
+      particle_copy%resample_n=self%resample_n
+      particle_copy%r=self%r
+      particle_copy%v=self%v
+      particle_copy%m=self%m
+      particle_copy%inv_h=self%inv_h
+      particle_copy%inv_rho=self%inv_rho
+      particle_copy%h=self%h
+      particle_copy%rho=self%rho
+      particle_copy%a_dot=self%a_dot
+      particle_copy%a_dot_new=self%a_dot_new
+      particle_copy%f_sub=self%f_sub
+      
+      if (associated(self%lambda_array)) then
+         allocate(particle_copy%lambda_array(size(self%lambda_array)))
+         allocate(particle_copy%a_dot_scatter_array(size(self%a_dot_scatter_array)))
+         particle_copy%lambda_array=self%lambda_array
+         particle_copy%a_dot_scatter_array=self%a_dot_scatter_array
+      else
+         particle_copy%lambda_array=>null()
+         particle_copy%a_dot_scatter_array=>null()
+      end if
+      
+      return
+      
+   end function
    
    elemental subroutine destroy(self)
    

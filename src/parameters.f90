@@ -48,13 +48,14 @@ module m_sph_parameters
    ! sph parameters
    integer(kind=int_kind),parameter :: n_leaf=2**n_dim          ! max particles per leaf cell
    integer(kind=int_kind),parameter :: h_iterations=10          ! maximum number of h iterations
-   integer(kind=int_kind),parameter :: n_lookup=64              ! number of entries in kernel lookup table
+   integer(kind=int_kind),parameter :: n_lookup=128             ! number of entries in kernel lookup table
    real(kind=rel_kind),parameter :: delta_h=0.01_rel_kind       ! smoothing length convergence parameter
    
    ! ray parameters
    integer(kind=int_kind),parameter :: n_ray=128                ! initial size of ray_particle array (can be resized)
    real(kind=rel_kind),parameter :: ray_eta=1.2_rel_kind        ! ray length over estimation factor
    real(kind=rel_kind),parameter :: ray_conv=0.01_rel_kind      ! ray convergence parameter
+   real(kind=rel_kind),parameter :: mrw_max_len=3._rel_kind     ! maximum length of MRW step in units of h
    
 end module
 
@@ -66,6 +67,7 @@ module m_constants_parameters
    
    ! numbers
    real(kind=rel_kind),parameter :: pi=4._rel_kind*atan(1._rel_kind)    ! 3.1412...
+   real(kind=rel_kind),parameter :: one_over_four_pi=0.25_rel_kind/pi   ! 1/ 4*pi
    real(kind=rel_kind),parameter :: one_third=1._rel_kind/3._rel_kind   ! 1/3
    real(kind=rel_kind),parameter :: root_two=sqrt(2._rel_kind)          ! sqrt of two
    real(kind=rel_kind),parameter :: root_three=sqrt(3._rel_kind)        ! sqrt of three

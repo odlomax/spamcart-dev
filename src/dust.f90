@@ -57,6 +57,7 @@ module m_dust
       real(kind=rel_kind),allocatable :: mrw_zeta_array(:)                 ! mrw zeta parameter
       real(kind=rel_kind),allocatable :: mrw_y_array(:)                    ! mrw y parameter
       real(kind=rel_kind),allocatable :: mrw_planck_abs_array(:)           ! planck absorption coefficient
+      real(kind=rel_kind),allocatable :: mrw_planck_ext_array(:)           ! planck extinction coefficient
       real(kind=rel_kind),allocatable :: mrw_inv_planck_ext_array(:)       ! inverse planck extinction coefficient
       real(kind=rel_kind),allocatable :: mrw_planck_sca_array(:,:)         ! planck scattering coefficient (definite integral)
       real(kind=rel_kind),allocatable :: mrw_planck_function_array(:,:)    ! planck function
@@ -90,6 +91,7 @@ module m_dust
       procedure,non_overridable :: mrw_initialise
       procedure,non_overridable :: mrw_random_wavelength
       procedure,non_overridable :: mrw_planck_abs
+      procedure,non_overridable :: mrw_planck_ext
       procedure,non_overridable :: mrw_inv_planck_ext
       procedure,non_overridable :: mrw_planck_sca
       procedure,non_overridable :: mrw_distance
@@ -136,6 +138,7 @@ module m_dust
       if (allocated(self%mrw_zeta_array)) deallocate(self%mrw_zeta_array)
       if (allocated(self%mrw_y_array)) deallocate(self%mrw_y_array)
       if (allocated(self%mrw_planck_abs_array)) deallocate(self%mrw_planck_abs_array)
+      if (allocated(self%mrw_planck_ext_array)) deallocate(self%mrw_planck_ext_array)
       if (allocated(self%mrw_inv_planck_ext_array)) deallocate(self%mrw_inv_planck_ext_array)
       if (allocated(self%mrw_planck_sca_array)) deallocate(self%mrw_planck_sca_array)
       if (allocated(self%mrw_planck_function_array)) deallocate(self%mrw_planck_function_array)
@@ -227,7 +230,7 @@ module m_dust
       ! result declaration
       real(kind=rel_kind) :: value                            ! luminosity
 
-      value=lookup_and_interpolate(lambda,abs_rate/(4._rel_kind*pi),&
+      value=lookup_and_interpolate(lambda,abs_rate*one_over_four_pi,&
          &self%wavelength_array,self%bol_mass_emissivity_array,self%mono_mass_emissivity_array)
       
       return
@@ -284,7 +287,7 @@ module m_dust
       ! result declaration
       real(kind=rel_kind) :: value                            ! emission temperature
       
-      value=lookup_and_interpolate(abs_rate/(4._rel_kind*pi),&
+      value=lookup_and_interpolate(abs_rate*one_over_four_pi,&
          &self%bol_mass_emissivity_array,self%temperature_array)
       
       return
@@ -301,7 +304,7 @@ module m_dust
       ! result declaration
       real(kind=rel_kind) :: value                            ! average albedo
       
-      value=lookup_and_interpolate(abs_rate/(4._rel_kind*pi),self%bol_mass_emissivity_array,self%planck_albedo_array)
+      value=lookup_and_interpolate(abs_rate*one_over_four_pi,self%bol_mass_emissivity_array,self%planck_albedo_array)
    
       return
       
@@ -343,7 +346,7 @@ module m_dust
       real(kind=rel_kind) :: temp_cum_emissivity_array(size(self%wavelength_array))
       
       ! enforce that abs_rate/4pi is in range of bol_mass_emissivity_array
-      temp_abs_rate=max(min(abs_rate/(4._rel_kind*pi),&
+      temp_abs_rate=max(min(abs_rate*one_over_four_pi,&
          &self%bol_mass_emissivity_array(size(self%bol_mass_emissivity_array))),&
          &self%bol_mass_emissivity_array(1))
       
@@ -453,6 +456,7 @@ module m_dust
       allocate(self%mrw_y_array(n_mrw))
       allocate(self%mrw_planck_abs_array(size(self%temperature_array)))
       allocate(self%mrw_inv_planck_ext_array(size(self%temperature_array)))
+      allocate(self%mrw_planck_ext_array(size(self%temperature_array)))
       allocate(self%mrw_planck_sca_array(size(self%wavelength_array),size(self%temperature_array)))
       allocate(self%mrw_planck_function_array(size(self%wavelength_array),size(self%temperature_array)))
       allocate(self%mrw_bol_planck_function_array(size(self%temperature_array)))
@@ -490,6 +494,9 @@ module m_dust
          self%mrw_norm_planck_function(:,i)=self%mrw_planck_function_array(:,i)/self%mrw_bol_planck_function_array(i)
          
          ! planck abs/ext/sca
+         self%mrw_planck_ext_array(i)=trapz_intgr(self%wavelength_array,self%dust_mass_ext_array*&
+            &self%mrw_planck_function_array(:,i))/self%mrw_bol_planck_function_array(i)
+         
          self%mrw_planck_abs_array(i)=trapz_intgr(self%wavelength_array,self%dust_mass_ext_array*(1._rel_kind-self%albedo_array)*&
             &self%mrw_planck_function_array(:,i))/self%mrw_bol_planck_function_array(i)
          
@@ -523,7 +530,7 @@ module m_dust
       real(kind=rel_kind) :: temp_cum_emissivity_array(size(self%wavelength_array))
       
       ! enforce that abs_rate/4pi is in range of bol_mass_emissivity_array
-      temp_abs_rate=max(min(abs_rate/(4._rel_kind*pi),&
+      temp_abs_rate=max(min(abs_rate*one_over_four_pi,&
          &self%bol_mass_emissivity_array(size(self%bol_mass_emissivity_array))),&
          &self%bol_mass_emissivity_array(1))
       
@@ -556,7 +563,23 @@ module m_dust
       ! result declaration
       real(kind=rel_kind) :: planck_abs                       ! planck absorption coefficient
          
-      planck_abs=lookup_and_interpolate(abs_rate/(4._rel_kind*pi),self%bol_mass_emissivity_array,self%mrw_planck_abs_array)
+      planck_abs=lookup_and_interpolate(abs_rate*one_over_four_pi,self%bol_mass_emissivity_array,self%mrw_planck_abs_array)
+      
+      return
+   
+   end function
+   
+   ! get inverse planck extinction coefficient
+   elemental function mrw_planck_ext(self,abs_rate) result (inv_planck_ext)
+   
+      ! argument declarations
+      class(dust),intent(in) :: self                          ! dust object
+      real(kind=rel_kind),intent(in) :: abs_rate              ! energy absorption rate
+      
+      ! result declaration
+      real(kind=rel_kind) :: inv_planck_ext                   ! inverse planck extinction coefficient
+         
+      inv_planck_ext=lookup_and_interpolate(abs_rate*one_over_four_pi,self%bol_mass_emissivity_array,self%mrw_planck_ext_array)
       
       return
    
@@ -572,7 +595,7 @@ module m_dust
       ! result declaration
       real(kind=rel_kind) :: inv_planck_ext                   ! inverse planck extinction coefficient
          
-      inv_planck_ext=lookup_and_interpolate(abs_rate/(4._rel_kind*pi),self%bol_mass_emissivity_array,self%mrw_inv_planck_ext_array)
+      inv_planck_ext=lookup_and_interpolate(abs_rate*one_over_four_pi,self%bol_mass_emissivity_array,self%mrw_inv_planck_ext_array)
       
       return
    
@@ -590,9 +613,9 @@ module m_dust
       ! result declaration
       real(kind=rel_kind) :: planck_sca                     ! planck scattering coefficient
       
-      planck_sca=lookup_and_interpolate(wavelength_1,abs_rate/(4._rel_kind*pi),&
+      planck_sca=lookup_and_interpolate(wavelength_1,abs_rate*one_over_four_pi,&
          &self%wavelength_array,self%bol_mass_emissivity_array,self%mrw_planck_sca_array)-&
-         &lookup_and_interpolate(wavelength_0,abs_rate/(4._rel_kind*pi),&
+         &lookup_and_interpolate(wavelength_0,abs_rate*one_over_four_pi,&
          &self%wavelength_array,self%bol_mass_emissivity_array,self%mrw_planck_sca_array)
          
       return

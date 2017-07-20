@@ -50,7 +50,6 @@ module m_binary_tree
       procedure,non_overridable :: initialise
       procedure,non_overridable :: destroy
       procedure,non_overridable :: calc_h
-      procedure,non_overridable :: get_sph_quantity
    
    end type
    
@@ -162,13 +161,17 @@ module m_binary_tree
       
       ! loop over all particles
       n_threads=omp_get_num_procs()
-      !$omp parallel do num_threads(n_threads) default(shared)&
+      !$omp parallel do schedule(dynamic) num_threads(n_threads) default(shared)&
       !$omp& private(i,j,h_low,h_high,h,h_new,rho,found_h)
       
          do i=1,size(self%particle_array)
          
             found_h=.false.
-            h_new=h_init
+            if (self%particle_array(i)%inv_h>0._rel_kind) then
+               h_new=1._rel_kind/self%particle_array(i)%inv_h
+            else
+               h_new=h_init
+            end if
             h_low=huge(0._rel_kind)
             h_high=0._rel_kind
          
@@ -247,25 +250,6 @@ module m_binary_tree
       
       return
    
-   end subroutine
-   
-   pure subroutine get_sph_quantity(self,r,v,a_dot,rho)
-   
-      ! argument declarations
-      class(binary_tree),intent(in) :: self                     ! binary tree object
-      real(kind=rel_kind),intent(in) :: r(n_dim)                ! position
-      real(kind=rel_kind),intent(out),optional :: v(n_dim)      ! velocity
-      real(kind=rel_kind),intent(out),optional :: a_dot         ! energy absorption rate
-      real(kind=rel_kind),intent(out),optional :: rho           ! density
-      
-      if (present(v)) v=0._rel_kind
-      if (present(a_dot)) a_dot=0._rel_kind
-      if (present(rho)) rho=0._rel_kind
-      
-      call self%root_node%sph_scatter(self%sph_kernel,r,v,a_dot,rho)
-      
-      return
-      
    end subroutine
 
 end module
