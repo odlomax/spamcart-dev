@@ -623,7 +623,7 @@ module m_io
       open(1,file=trim(file_name),status="unknown",form="formatted")
       
       ! write header
-      write(1,"(7(A25))") "x_1","x_2","x_3","m","T","rho","h"
+      write(1,"(7(A27))") "x_1","x_2","x_3","m","T","rho","h"
       
       ! internal cgs units
       write(1,"(7(A25))")&
@@ -632,7 +632,7 @@ module m_io
       ! write out data
       do i=1,size(position,2)
       
-         write(1,"(7(E25.17))") position(:,i),mass(i),temperature(i),density(i),smoothing_length(i)
+         write(1,"(7(E27.17E3))") position(:,i),mass(i),temperature(i),density(i),smoothing_length(i)
       
       end do
       
@@ -666,12 +666,12 @@ module m_io
          write(file_name,"(A,E10.4,A)") trim(sim_id)//"/image_lambda=",lambda(i),"_micron.dat" 
          open(1,file=trim(file_name))
          ! write header 
-         write(1,"(3(A25))") "x_1","x_2","i_lambda"
-         write(1,"(2(A25),A31)") "cm", "cm","erg s^-1 sr^-1 cm^-2 micron^-1"
+         write(1,"(3(A27))") "x_1","x_2","i_lambda"
+         write(1,"(2(A27),A31)") "cm", "cm","erg s^-1 sr^-1 cm^-2 micron^-1"
          
             do k=1,size(y)
                do j=1,size(x)
-                  write(1,"(3(E25.17))") x(j),y(k),i_lambda(i,j,k)
+                  write(1,"(3(E27.17E3))") x(j),y(k),i_lambda(i,j,k)
                end do
             end do
          
@@ -683,22 +683,22 @@ module m_io
       d_a=((x(size(x))-x(1))*(y(size(y))-y(1)))/real(size(x)*size(y),rel_kind)
       open(1,file=trim(sim_id)//"/spectrum.dat")
       
-      write(1,"(2(A25))") "lambda","I_lambda"
-      write(1,"(A25,A26)") "micron", "erg s^-1 sr^-1 micron^-1"
+      write(1,"(2(A27))") "lambda","I_lambda"
+      write(1,"(A27,A27)") "micron", "erg s^-1 sr^-1 micron^-1"
       
       do i=1,size(lambda)
       
-         write(1,"(2(E25.17))") lambda(i),sum(i_lambda(i,:,:))*d_a
+         write(1,"(2(E27.17E3))") lambda(i),sum(i_lambda(i,:,:))*d_a
       end do
       
       close(1)
       
       open(1,file=trim(sim_id)//"/column_density.dat")
-      write(1,"(3(A25))") "x_1","x_2","sigma"
-      write(1,"(3(A25))") "cm", "cm","g cm^-2"
+      write(1,"(3(A27))") "x_1","x_2","sigma"
+      write(1,"(3(A27))") "cm", "cm","g cm^-2"
          do j=1,size(y)
             do i=1,size(x)
-               write(1,"(3(E25.17))") x(i),y(j),sigma(i,j)
+               write(1,"(3(E27.17E3))") x(i),y(j),sigma(i,j)
             end do
          end do
       close(1)

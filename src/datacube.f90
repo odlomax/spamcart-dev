@@ -440,7 +440,7 @@ module m_datacube
       ! write out datacube
       write(file_name,"(A)") trim(self%sim_params%sim_id)//"/datacube.dat"
       open(1,file=trim(file_name))
-      write(format_string,"(A,I0,A)") "(",3+size(self%i_lambda),"(E25.17))"
+      write(format_string,"(A,I0,A)") "(",3+size(self%i_lambda),"(E27.17E3))"
       
       write(1,"(A)") "# 1 x (cm)"
       write(1,"(A)") "# 2 y (cm)"
@@ -465,7 +465,7 @@ module m_datacube
       else
          n_ps=0
       end if
-      write(format_string,"(A,I0,A)") "(",4+2*(n_ps+1),"(E25.17))"
+      write(format_string,"(A,I0,A)") "(",4+2*(n_ps+1),"(E27.17E3))"
       
       write(1,"(A)") "# 1 lambda (micron)"
       write(1,"(A)") "# 2 F_lambda 4 pi D^2 [full] (erg s^-1 micron^-1)"
@@ -502,9 +502,9 @@ module m_datacube
          
       close(1)
       
-      write(*,"(A,E25.17)") "apparent luminosity: ",trapz_intgr(self%lambda,self%image_tree_root%i_lambda)*4._rel_kind*pi*&
+      write(*,"(A,E27.17E3)") "apparent luminosity: ",trapz_intgr(self%lambda,self%image_tree_root%i_lambda)*4._rel_kind*pi*&
          &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1))                 
-      write(*,"(A,E25.17)") "emission luminosity: ",trapz_intgr(self%lambda,self%image_tree_root%j_lambda)*4._rel_kind*pi*&
+      write(*,"(A,E27.17E3)") "emission luminosity: ",trapz_intgr(self%lambda,self%image_tree_root%j_lambda)*4._rel_kind*pi*&
          &product(self%image_tree_root%aabb(:,2)-self%image_tree_root%aabb(:,1))
       
       return
