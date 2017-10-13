@@ -88,7 +88,7 @@ module m_source
    
    abstract interface
       subroutine initialise_virtual(self,position,velocity,&
-         &temperature,luminosity,wavelength_min,wavelength_max,n_wavelength,&
+         &temperature,luminosity,beta,wavelength_min,wavelength_max,n_wavelength,&
          &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity,luminosity_file)
          
          import :: source,int_kind,rel_kind,chr_kind,string_length,log_kind,n_dim
@@ -99,6 +99,7 @@ module m_source
          real(kind=rel_kind),intent(in) :: velocity(n_dim)           ! velocity of source
          real(kind=rel_kind),intent(in),optional :: temperature      ! temperature of source
          real(kind=rel_kind),intent(in),optional :: luminosity       ! luminosity of source
+         real(kind=rel_kind),intent(in),optional :: beta             ! greybody exponent
          real(kind=rel_kind),intent(in),optional :: wavelength_min   ! minimum wavelength
          real(kind=rel_kind),intent(in),optional :: wavelength_max   ! maximum wavelength
          integer(kind=int_kind),intent(in),optional :: n_wavelength  ! number of wavelength points

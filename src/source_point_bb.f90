@@ -45,29 +45,29 @@ module m_source_point_bb
    contains
       
    pure subroutine initialise(self,position,velocity,&
-      &temperature,luminosity,wavelength_min,wavelength_max,n_wavelength,&
+      &temperature,luminosity,beta,wavelength_min,wavelength_max,n_wavelength,&
       &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity,luminosity_file)
-   
+      
       ! argument declarations
-      class(source_point_bb),intent(inout) :: self                ! blackbody point source object
+      class(source_point_bb),intent(inout) :: self                ! source object
       real(kind=rel_kind),intent(in) :: position(n_dim)           ! position of source
       real(kind=rel_kind),intent(in) :: velocity(n_dim)           ! velocity of source
-      real(kind=rel_kind),intent(in),optional :: temperature      ! temperature of source (required)
-      real(kind=rel_kind),intent(in),optional :: luminosity       ! luminosity of source (required)
-      real(kind=rel_kind),intent(in),optional :: wavelength_min   ! minimum wavelength (required)
-      real(kind=rel_kind),intent(in),optional :: wavelength_max   ! maximum wavelength (required)
-      integer(kind=int_kind),intent(in),optional :: n_wavelength  ! number of wavelength points (required)
+      real(kind=rel_kind),intent(in),optional :: temperature      ! temperature of source
+      real(kind=rel_kind),intent(in),optional :: luminosity       ! luminosity of source
+      real(kind=rel_kind),intent(in),optional :: beta             ! greybody exponent
+      real(kind=rel_kind),intent(in),optional :: wavelength_min   ! minimum wavelength
+      real(kind=rel_kind),intent(in),optional :: wavelength_max   ! maximum wavelength
+      integer(kind=int_kind),intent(in),optional :: n_wavelength  ! number of wavelength points
       real(kind=rel_kind),intent(in),optional :: radius           ! radius of source
       real(kind=rel_kind),intent(in),optional :: dilution         ! blackbody dilution factor
-      real(kind=rel_kind),intent(in),optional :: gal_r            ! galactic radius
-      real(kind=rel_kind),intent(in),optional :: gal_z            ! galactic height
+      real(kind=rel_kind),intent(in),optional :: gal_r            ! galactic radius (kpc)
+      real(kind=rel_kind),intent(in),optional :: gal_z            ! galactic height (kpc)
       real(kind=rel_kind),intent(in),optional :: g_0              ! optional g_0 normalisation
       logical(kind=log_kind),intent(in),optional :: add_cmb       ! add cosmic microwave background
       real(kind=rel_kind),intent(in),optional :: mass             ! mass of star
       real(kind=rel_kind),intent(in),optional :: age              ! age of star
       real(kind=rel_kind),intent(in),optional :: metallicity      ! metallicity of star
       character(kind=chr_kind,len=string_length),intent(in),optional :: luminosity_file   ! mono luminosity file name
-      
       
       allocate(self%wavelength_array(n_wavelength))
       allocate(self%intensity_array(n_wavelength))
@@ -88,6 +88,11 @@ module m_source_point_bb
       ! calculate luminosity
       self%luminosity=luminosity
       self%bolometric_intensity=trapz_intgr(self%wavelength_array,self%intensity_array)
+      
+      ! reshape spectrum to greybody
+      self%intensity_array=self%intensity_array*self%wavelength_array**(-beta)
+      self%intensity_array=self%intensity_array*self%bolometric_intensity/trapz_intgr(self%wavelength_array,self%intensity_array)
+      
       
       ! normalise intensity and calculate cumulative distribution
       self%norm_intensity_array=self%intensity_array/&

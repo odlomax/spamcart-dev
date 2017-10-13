@@ -75,6 +75,7 @@ module m_options
       character(kind=chr_kind,len=string_length) :: point_type                ! point source type
       real(kind=rel_kind) :: point_lambda_min                                 ! minimum wavelength
       real(kind=rel_kind) :: point_lambda_max                                 ! maximum wavelength
+      real(kind=rel_kind) :: point_beta                                        ! greybody beta parameter
       integer(kind=int_kind) :: point_n_lambda                                ! number of wavelengths
       character(kind=chr_kind,len=string_length) :: point_file_list           ! file containing list of luminosity file names
       real(kind=rel_kind) :: point_min_sub_radius                             ! minimum sublimation radius
@@ -174,6 +175,7 @@ module m_options
       ! point source parameters
       self%point_sources=.true.
       self%point_type="bb"
+      self%point_beta=0._rel_kind
       self%point_lambda_min=1.e-1_rel_kind
       self%point_lambda_max=1.e+4_rel_kind
       self%point_n_lambda=1001
@@ -352,6 +354,9 @@ module m_options
                   
                case ("point_type")
                   self%point_type=param_value
+                  
+               case ("point_beta")
+                  read(param_value,*) self%point_beta
                
                case ("point_lambda_min")
                   read(param_value,*) self%point_lambda_min

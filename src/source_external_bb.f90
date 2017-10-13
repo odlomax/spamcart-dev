@@ -46,7 +46,7 @@ module m_source_external_bb
    
    ! set up diluted blackbody radiation field 
    subroutine initialise(self,position,velocity,&
-      &temperature,luminosity,wavelength_min,wavelength_max,n_wavelength,&
+      &temperature,luminosity,beta,wavelength_min,wavelength_max,n_wavelength,&
       &radius,dilution,gal_r,gal_z,g_0,add_cmb,mass,age,metallicity,luminosity_file)
    
       ! argument declarations
@@ -55,6 +55,7 @@ module m_source_external_bb
       real(kind=rel_kind),intent(in) :: velocity(n_dim)           ! velocity of source
       real(kind=rel_kind),intent(in),optional :: temperature      ! temperature of source (required)
       real(kind=rel_kind),intent(in),optional :: luminosity       ! luminosity of source
+      real(kind=rel_kind),intent(in),optional :: beta             ! greybody exponent
       real(kind=rel_kind),intent(in),optional :: wavelength_min   ! minimum wavelength (required)
       real(kind=rel_kind),intent(in),optional :: wavelength_max   ! maximum wavelength (required)
       integer(kind=int_kind),intent(in),optional :: n_wavelength  ! number of wavelength points (required)

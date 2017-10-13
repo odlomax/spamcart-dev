@@ -171,7 +171,7 @@ module m_simulation
                write(*,"(A)") "initialise point sources"
                do i=1,size(self%point_source_array)
                   call self%point_source_array(i)%initialise(position(:,i),(/(0._rel_kind,j=1,n_dim)/),temperature=temperature(i),&
-                     &luminosity=luminosity(i),wavelength_min=self%sim_params%point_lambda_min,&
+                     &luminosity=luminosity(i),beta=self%sim_params%point_beta,wavelength_min=self%sim_params%point_lambda_min,&
                      &wavelength_max=self%sim_params%point_lambda_max,n_wavelength=self%sim_params%point_n_lambda)
                end do
                
