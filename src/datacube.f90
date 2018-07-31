@@ -107,6 +107,7 @@ module m_datacube
       real(kind=rel_kind),allocatable :: t_hist_array(:,:)  ! array of temperature histograms
       real(kind=rel_kind),allocatable :: t_moment_array(:,:)! array of temperature moments (element 1 is the mean)
       
+      
       ! associated parameters object
       self%sim_params=>sim_params
       
@@ -139,6 +140,7 @@ module m_datacube
          v_ob=0._rel_kind
       end if
       
+      
       ! set up unit vectors
       img_x_unit=(/1._rel_kind,0._rel_kind,0._rel_kind/)
       img_y_unit=(/0._rel_kind,1._rel_kind,0._rel_kind/)
@@ -166,6 +168,7 @@ module m_datacube
          call self%image_tree_particle_array(i)%initialise(sph_tree%particle_array(i),&
             &reshape((/img_x_unit,img_y_unit/),(/n_dim,2/)))
       end do
+      
       
       ! build image tree
       node_id=0
@@ -197,6 +200,7 @@ module m_datacube
          call sph_ray(i)%initialise(sph_kernel,sph_tree,dust_prop)
       end do
       
+      
       !$omp parallel num_threads(num_threads) default(shared) private(i,j,k,pix_position,thread_num,t_array,w_array)
          !$omp do schedule(dynamic)
             do j=1,self%image_tree_root%n_leaf
@@ -206,6 +210,7 @@ module m_datacube
                pix_position=sph_tree%com+0.5_rel_kind*sph_tree%max_length*img_z_unit+&
                   &0.5_rel_kind*(aabb_array(1,2,j)+aabb_array(1,1,j))*img_x_unit+&
                   &0.5_rel_kind*(aabb_array(2,2,j)+aabb_array(2,1,j))*img_y_unit
+                  
                call sph_ray(thread_num)%ray_trace_initialise(pix_position,-1._rel_kind*img_z_unit)
             
                do i=1,size(self%lambda)
@@ -222,25 +227,30 @@ module m_datacube
                if (self%sim_params%datacube_ppmap) then
                
                   t_array=dust_prop%dust_temperature(sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%a_dot)
+                  
                   w_array=sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%sigma*&
                      &sph_ray(thread_num)%item(:sph_ray(thread_num)%n_item)%f_sub
                
                   ! calculate temperature differential column density
                   if (sph_ray(thread_num)%n_item>0) then
                      t_hist_array(:,j)=make_hist(t_array,self%t_bins,w_array)
-                  else
-                     t_hist_array(:,j)=0._rel_kind
-                  end if
                   
-                  if (self%sim_params%datacube_log_moments) t_array=log10(t_array)
+                     if (self%sim_params%datacube_log_moments) t_array=log10(t_array)
                      
-                  ! calculate column weighted temperature mean
-                  t_moment_array(1,j)=mean(t_array,w_array)
+                     ! calculate column weighted temperature mean
+                     t_moment_array(1,j)=mean(t_array,w_array)
                   
-                  ! calculate column weighted temperature central moments
-                  do k=2,size(t_moment_array,1)
-                     t_moment_array(k,j)=dist_moment(t_array,t_moment_array(1,j),k,w_array)
-                  end do
+                     ! calculate column weighted temperature central moments
+                     do k=2,size(t_moment_array,1)
+                        t_moment_array(k,j)=dist_moment(t_array,t_moment_array(1,j),k,w_array)
+                     end do
+                     
+                  else
+                  
+                     t_hist_array(:,j)=0._rel_kind
+                     t_moment_array(:,j)=0._rel_kind
+                     
+                  end if
 
                end if
                   
@@ -306,6 +316,8 @@ module m_datacube
       call sph_ray%destroy()
 
       deallocate(sph_ray)
+      
+      write(*,*) "done"
        
       return
    
